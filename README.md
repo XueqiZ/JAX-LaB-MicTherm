@@ -18,7 +18,7 @@ inverse modeling of multiphase flows. JAX-LaB is an extension of [XLB](https://g
   Capillary rise in parallel plates (single component, multiphase simulation)
 </p> -->
 <p align="center">
-  <img src="assets/evaporation.gif" alt="" width="600">
+  <img src="assets/3D_evaporation.gif" alt="" width="600">
 </p>
 <p align="center">
     Time evolution of liquid distribution in a porous medium during evaporation. Two-component (air–water) system simulated with the Cascaded (central-moment) collision model.
@@ -53,7 +53,7 @@ inverse modeling of multiphase flows. JAX-LaB is an extension of [XLB](https://g
   <img src="assets/predicted.png" alt="" width="1000">
 </p>
 <p align="center">
-Temporal evolution of the density field determined using neural network for the inverse multiphase flow control problem of forming a droplet at t = 900. The MLP output is used as the initial condition for LBM and the backpropagation step during training leverages the auto-differentiation capabilities of JAX-LaB (see paper for details).
+Temporal evolution of the density field determined using neural network for the inverse multiphase flow control problem of forming a droplet at t = 900. The MLP output is used as the initial condition for LBM and the backpropagation step during training leverages the auto-differentiation capabilities of JAX-LaB (see <a href="https://doi.org/10.1029/2025MS005313">paper</a> for details).
 </p>
 
 <br>
@@ -134,7 +134,7 @@ user modification.
 - **Convective Outflow BC**: Convective outflow boundary condition, useful for porous media flows.
 
 ## Accompanying Paper
-A preprint of the paper, accepted for publication in Journal of Advances in Modeling Earth Systems (JAMES), is available on [arXiv](https://arxiv.org/abs/2506.17713).
+Accompanying paper, published in Journal of Advances in Modeling Earth Systems (JAMES), is available [here](https://doi.org/10.1029/2025MS005313).
 
 <!-- ## Citing XLB
 
