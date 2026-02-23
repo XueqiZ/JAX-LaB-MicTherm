@@ -104,11 +104,14 @@ def save_fields_hdf5_xdmf(
     Parameters
     ----------
     timestep (int): The timestep number to be associated with the saved fields.
-    fields (Dict[str, np.ndarray]): A dictionary of fields to be saved. Each field must be an array-like object
-    with dimensions (nx, ny) for 2D fields or (nx, ny, nz) for 3D fields, where:
+
+    fields (Dict[str, np.ndarray]): A dictionary of fields to be saved. Each field must be an array-like object with dimensions (nx, ny) for 2D fields
+    or (nx, ny, nz) for 3D fields, where:
+
     - nx : int, number of grid points along the x-axis
     - ny : int, number of grid points along the y-axis
     - nz : int, number of grid points along the z-axis (for 3D fields only)
+
     The key value for each field in the dictionary must be a string containing the name of the field.
 
     output_dir (str, optional, default: '.'):  The directory in which to save the HDF5 files. Defaults to the current directory.
