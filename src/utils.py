@@ -1,19 +1,20 @@
-import numpy as np
-import matplotlib.pylab as plt
-from matplotlib import cm
-from time import time
-import pyvista as pv
-from jax.image import resize
-from jax import jit
-import jax.numpy as jnp
-from functools import partial
-import trimesh
-import h5py
+import os
 import re
+from functools import partial
+from time import time
+
+import h5py
+import jax.numpy as jnp
+import matplotlib.pylab as plt
+import numpy as np
+import pyvista as pv
+import trimesh
+from jax import jit
+from jax.image import resize
+from matplotlib import cm
 from path import Path
 from termcolor import colored
 
-import os
 import __main__
 
 
@@ -99,8 +100,34 @@ def save_fields_hdf5_xdmf(
     multi_timestep_file=None,
 ):
     """
-    Save 2D/3D cell-centered fields (dict of arrays) as ParaView-readable HDF5/XDMF.
+    Save 2D/3D cell-centered fields (dict of arrays) as HDF5/XDMF.
 
+    Parameters
+    ----------
+    timestep (int) : The timestep number to be associated with the saved fields.
+    fields (Dict[str, np.ndarray]) : A dictionary of fields to be saved. Each field must be an array-like object
+    with dimensions (nx, ny) for 2D fields or (nx, ny, nz) for 3D fields, where:
+        - nx : int, number of grid points along the x-axis
+        - ny : int, number of grid points along the y-axis
+        - nz : int, number of grid points along the z-axis (for 3D fields only)
+    The key value for each field in the dictionary must be a string containing the name of the field.
+
+    output_dir (str, optional, default: '.') : The directory in which to save the HDF5 files. Defaults to the current directory.
+    prefix (str, optional, default: 'fields') : A prefix to be added to the filename. Defaults to 'fields'.
+    origin (tuple[float]) : The origin used for the file.
+    spacing (tuple[float]) : Spacing used for data points.
+    compression (str): Compression algorithm used, supported options: `lzf`, `gzip` (default) and `szip`.
+    compression_level (int) : Options for the compression filter.
+    shuffle (bool) : Whether shuffle filter is applied. True by default.
+    target_chunk_bytes (int) : Chunk size to be used in bytes. 2 * 1024 * 1024 (2 MB) by default.
+    multi_timestep_file (bool) : Store data for all timesteps in a single, consolidated file.
+
+    Returns
+    -------
+    None
+
+    Notes
+    -----
     Single-step mode:
       {output_dir}/{prefix}_{timestep:07d}.hdf5
       {output_dir}/{prefix}_{timestep:07d}.xdmf
@@ -556,11 +583,12 @@ def save_fields_vtk(timestep, fields, output_dir=".", prefix="fields"):
     ----------
     timestep (int): The timestep number to be associated with the saved fields.
     fields (Dict[str, np.ndarray]): A dictionary of fields to be saved. Each field must be an array-like object
-        with dimensions (nx, ny) for 2D fields or (nx, ny, nz) for 3D fields, where:
-            - nx : int, number of grid points along the x-axis
-            - ny : int, number of grid points along the y-axis
-            - nz : int, number of grid points along the z-axis (for 3D fields only)
-        The key value for each field in the dictionary must be a string containing the name of the field.
+    with dimensions (nx, ny) for 2D fields or (nx, ny, nz) for 3D fields, where:
+        - nx : int, number of grid points along the x-axis
+        - ny : int, number of grid points along the y-axis
+        - nz : int, number of grid points along the z-axis (for 3D fields only)
+    The key value for each field in the dictionary must be a string containing the name of the field.
+
     output_dir (str, optional, default: '.'): The directory in which to save the VTK files. Defaults to the current directory.
     prefix (str, optional, default: 'fields'): A prefix to be added to the filename. Defaults to 'fields'.
 
