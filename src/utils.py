@@ -95,6 +95,8 @@ def save_fields_hdf5_xdmf(
     shuffle=True,
     target_chunk_bytes=2 * 1024 * 1024,
     multi_timestep_file=None,
+    static_fields=None,
+    static_fields_file=None,
 ):
     """
     Save 2D/3D cell-centered fields (dict of arrays) as HDF5/XDMF.
@@ -127,6 +129,11 @@ def save_fields_hdf5_xdmf(
 
     multi_timestep_file (bool): Store data for all timesteps in a single, consolidated file.
 
+    static_fields (dict, Optional): Pass a dict for static fields that doesn't change. Useful for passing for non-changing values (for e.g., mask array).
+    Static fields are stored once and referenced from all timesteps.
+
+    static_fields_file (str, Optional): Name of the file where static field is stored. Default: {prefix}_static.hdf5
+
     Returns
     -------
     None
@@ -142,10 +149,6 @@ def save_fields_hdf5_xdmf(
       {multi_timestep_file}
       {multi_timestep_file with .xdmf suffix}
     """
-    if not os.path.exists("./" + output_dir):
-        print(colored("Directory does not exist, creating the directory " + output_dir, "yellow"))
-        os.makedirs(output_dir)
-
     start = time()
 
     if not isinstance(fields, dict) or len(fields) == 0:
@@ -179,6 +182,24 @@ def save_fields_hdf5_xdmf(
     field_names = tuple(arrays.keys())
     field_signature = "|".join(field_names)
     dtype_signature = "|".join(str(arrays[name].dtype) for name in field_names)
+
+    static_arrays = {}
+    static_field_names = ()
+    static_field_signature = ""
+    static_dtype_signature = ""
+    if static_fields is not None:
+        if not isinstance(static_fields, dict) or len(static_fields) == 0:
+            raise ValueError("static_fields must be None or a non-empty dict[str, np.ndarray].")
+        for name, value in static_fields.items():
+            if name in arrays:
+                raise ValueError(f"static field '{name}' conflicts with dynamic field name.")
+            arr = np.asarray(value)
+            if arr.ndim != ndim or arr.shape != shape:
+                raise ValueError(f"Static field '{name}' must have shape {shape} and ndim {ndim}, got {arr.shape}.")
+            static_arrays[name] = arr
+        static_field_names = tuple(static_arrays.keys())
+        static_field_signature = "|".join(static_field_names)
+        static_dtype_signature = "|".join(str(static_arrays[name].dtype) for name in static_field_names)
 
     kwargs_cache = {}
 
@@ -253,6 +274,8 @@ def save_fields_hdf5_xdmf(
                 h5_file.attrs["spacing"] = spacing
                 h5_file.attrs["field_signature"] = field_signature
                 h5_file.attrs["dtype_signature"] = dtype_signature
+                h5_file.attrs["static_field_signature"] = static_field_signature
+                h5_file.attrs["static_dtype_signature"] = static_dtype_signature
 
                 time_ds = h5_file.create_dataset(
                     "__timesteps__",
@@ -274,10 +297,47 @@ def save_fields_hdf5_xdmf(
                     raise ValueError("field names/order do not match existing multi-timestep file.")
                 if str(h5_file.attrs.get("dtype_signature")) != dtype_signature:
                     raise ValueError("field dtypes do not match existing multi-timestep file.")
+                existing_static_sig = str(h5_file.attrs.get("static_field_signature", ""))
+                existing_static_dtype_sig = str(h5_file.attrs.get("static_dtype_signature", ""))
+                if static_fields is not None:
+                    if existing_static_sig not in ("", static_field_signature):
+                        raise ValueError("static field names/order do not match existing multi_timestep file.")
+                    if existing_static_dtype_sig not in ("", static_dtype_signature):
+                        raise ValueError("static field dtypes do not match existing multi_timestep file.")
 
             fields_group = h5_file["fields"]
             time_ds = h5_file["__timesteps__"]
             pending_value = int(time_ds.attrs.get("pending_value", -1))
+            static_meta = {}
+
+            if "static" not in h5_file:
+                h5_file.create_group("static")
+            static_group = h5_file["static"]
+
+            if static_fields is not None and str(h5_file.attrs.get("static_field_signature", "")) == "":
+                h5_file.attrs["static_field_signature"] = static_field_signature
+                h5_file.attrs["static_dtype_signature"] = static_dtype_signature
+
+            for name, arr in static_arrays.items():
+                data_out = np.transpose(arr, (2, 1, 0)) if ndim == 3 else np.transpose(arr, (1, 0))
+                if name not in static_group:
+                    ds = static_group.create_dataset(
+                        name,
+                        data=data_out,
+                        **dataset_kwargs(data_out.shape, data_out.dtype),
+                    )
+                    ds.attrs["original_shape"] = arr.shape
+                    ds.attrs["original_order"] = "XYZ" if ndim == 3 else "XY"
+                else:
+                    ds = static_group[name]
+                    if ds.shape != data_out.shape:
+                        raise ValueError(f"Static dataset shape mismatch for field '{name}'.")
+                    if ds.dtype != data_out.dtype:
+                        raise ValueError(f"Static dataset dtype mismatch for field '{name}'.")
+
+            for name in static_group.keys():
+                ds = static_group[name]
+                static_meta[name] = (tuple(int(v) for v in ds.shape), ds.dtype)
 
             while len(time_ds) > 0 and int(time_ds[len(time_ds) - 1]) == pending_value:
                 new_n = len(time_ds) - 1
@@ -395,6 +455,18 @@ def save_fields_hdf5_xdmf(
                             "          </DataItem>",
                             "        </Attribute>",
                         ])
+
+                    for name, (ds_shape, ds_dtype) in static_meta.items():
+                        number_type, precision = to_xdmf_type(ds_dtype)
+                        dims = " ".join(str(int(d)) for d in ds_shape)
+                        grids.extend([
+                            f'        <Attribute Name="{name}" AttributeType="Scalar" Center="Cell">',
+                            (
+                                f'          <DataItem Dimensions="{dims}" NumberType="{number_type}" '
+                                f'Precision="{precision}" Format="HDF">{h5_path.name}:/static/{name}</DataItem>'
+                            ),
+                            "        </Attribute>",
+                        ])
                     grids.append("      </Grid>")
 
                 xdmf_path = h5_path.with_suffix(".xdmf")
@@ -415,6 +487,79 @@ def save_fields_hdf5_xdmf(
         output_stem.parent.mkdir(parents=True, exist_ok=True)
         h5_path = output_stem.with_suffix(".hdf5")
         xdmf_path = output_stem.with_suffix(".xdmf")
+        static_meta = {}
+        static_ref_path = None
+
+        if static_fields_file is None:
+            static_h5_path = output_stem.parent / f"{prefix}_static.hdf5"
+        else:
+            static_h5_path = Path(static_fields_file)
+            if not static_h5_path.is_absolute():
+                static_h5_path = output_stem.parent / static_h5_path
+
+        if static_fields is not None or static_h5_path.exists():
+            if not static_h5_path.exists():
+                with h5py.File(
+                    static_h5_path,
+                    "w",
+                    libver="latest",
+                    rdcc_nbytes=max(int(target_chunk_bytes) * max(8, len(static_field_names)), 8 * 1024 * 1024),
+                ) as static_file:
+                    static_file.attrs["layout"] = "single_timestep_static"
+                    static_file.attrs["ndim"] = int(ndim)
+                    static_file.attrs["shape"] = tuple(int(v) for v in shape)
+                    static_file.attrs["origin"] = origin
+                    static_file.attrs["spacing"] = spacing
+                    static_file.attrs["static_field_signature"] = static_field_signature
+                    static_file.attrs["static_dtype_signature"] = static_dtype_signature
+                    for name, arr in static_arrays.items():
+                        data_out = np.transpose(arr, (2, 1, 0)) if ndim == 3 else np.transpose(arr, (1, 0))
+                        ds = static_file.create_dataset(
+                            name,
+                            data=data_out,
+                            **dataset_kwargs(data_out.shape, data_out.dtype),
+                        )
+                        ds.attrs["original_shape"] = arr.shape
+                        ds.attrs["original_order"] = "XYZ" if ndim == 3 else "XY"
+                    static_file.flush()
+                    fsync_if_possible(static_file)
+
+            with h5py.File(static_h5_path, "a", libver="latest") as static_file:
+                if int(static_file.attrs.get("ndim")) != int(ndim):
+                    raise ValueError("Static file ndim does not match dynamic fields.")
+                if tuple(int(v) for v in static_file.attrs.get("shape")) != tuple(int(v) for v in shape):
+                    raise ValueError("Static file shape does not match dynamic fields.")
+
+                existing_static_sig = str(static_file.attrs.get("static_field_signature", ""))
+                existing_static_dtype_sig = str(static_file.attrs.get("static_dtype_signature", ""))
+
+                if static_fields is not None:
+                    if existing_static_sig not in ("", static_field_signature):
+                        raise ValueError("static field names/order do not match static file.")
+                    if existing_static_dtype_sig not in ("", static_dtype_signature):
+                        raise ValueError("static field dtypes do not match static file.")
+
+                if static_fields is not None and existing_static_sig == "":
+                    static_file.attrs["static_field_signature"] = static_field_signature
+                    static_file.attrs["static_dtype_signature"] = static_dtype_signature
+                    for name, arr in static_arrays.items():
+                        if name not in static_file:
+                            data_out = np.transpose(arr, (2, 1, 0)) if ndim == 3 else np.transpose(arr, (1, 0))
+                            ds = static_file.create_dataset(
+                                name,
+                                data=data_out,
+                                **dataset_kwargs(data_out.shape, data_out.dtype),
+                            )
+                            ds.attrs["original_shape"] = arr.shape
+                            ds.attrs["original_order"] = "XYZ" if ndim == 3 else "XY"
+
+                for name in static_file.keys():
+                    ds = static_file[name]
+                    static_meta[name] = (tuple(int(v) for v in ds.shape), ds.dtype)
+                static_file.flush()
+                fsync_if_possible(static_file)
+
+            static_ref_path = os.path.relpath(static_h5_path, output_stem.parent).replace("\\", "/")
 
         with h5py.File(
             h5_path,
@@ -478,6 +623,19 @@ def save_fields_hdf5_xdmf(
                 ),
                 "      </Attribute>",
             ])
+
+        if static_ref_path is not None:
+            for name, (ds_shape, ds_dtype) in static_meta.items():
+                number_type, precision = to_xdmf_type(ds_dtype)
+                dims = " ".join(str(int(d)) for d in ds_shape)
+                attributes.extend([
+                    f'      <Attribute Name="{name}" AttributeType="Scalar" Center="Cell">',
+                    (
+                        f'        <DataItem Dimensions="{dims}" NumberType="{number_type}" '
+                        f'Precision="{precision}" Format="HDF">{static_ref_path}:/{name}</DataItem>'
+                    ),
+                    "      </Attribute>",
+                ])
 
         xdmf_lines = [
             '<?xml version="1.0" ?>',
@@ -555,6 +713,19 @@ def save_fields_hdf5_xdmf(
                         ),
                         "        </Attribute>",
                     ])
+
+                if static_ref_path is not None:
+                    for name, (ds_shape, ds_dtype) in static_meta.items():
+                        number_type, precision = to_xdmf_type(ds_dtype)
+                        dims = " ".join(str(int(d)) for d in ds_shape)
+                        grids.extend([
+                            f'        <Attribute Name="{name}" AttributeType="Scalar" Center="Cell">',
+                            (
+                                f'          <DataItem Dimensions="{dims}" NumberType="{number_type}" '
+                                f'Precision="{precision}" Format="HDF">{static_ref_path}:/{name}</DataItem>'
+                            ),
+                            "        </Attribute>",
+                        ])
                 grids.append("      </Grid>")
 
             series_xdmf_path = output_stem.parent / f"{prefix}_series.xdmf"
