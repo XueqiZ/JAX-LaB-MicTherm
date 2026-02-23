@@ -109,11 +109,12 @@ user modification.
 
 ### Output
 
-- Binary and ASCII VTK output (based on PyVista library)
+- Binary and ASCII VTK output (based on [PyVista](https://docs.pyvista.org/) library)
+- HDF5 output (based on [h5py](https://docs.h5py.org/)) to maximize I/O speed and minimize storage requirement
 - In-situ rendering using [PhantomGaze](https://github.com/loliverhennigh/PhantomGaze) library
 - [Orbax](https://github.com/google/orbax)-based distributed asynchronous checkpointing
 - Image Output
-- 3D mesh voxelizer using trimesh
+- 3D mesh voxelizer using [trimesh](https://trimesh.org/)
 
 ### Boundary conditions
 
