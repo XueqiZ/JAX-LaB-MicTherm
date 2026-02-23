@@ -25,17 +25,15 @@ def downsample_field(field, factor, method="bicubic"):
 
     Parameters
     ----------
-    field : jax.numpy.ndarray
-        The input vector field to be downsampled. This should be a 3D or 4D JAX array where the last dimension is 2 or 3 (vector components).
-    factor : int
-        The factor by which to downsample the field. The dimensions of the field will be divided by this factor.
-    method : str, optional
-        The method to use for downsampling. Default is 'bicubic'.
+    field (jax.numpy.ndarray): The input vector field to be downsampled. This should be a 3D or 4D JAX array where the last dimension is 2 or 3 (vector components).
+
+    factor (int): The factor by which to downsample the field. The dimensions of the field will be divided by this factor.
+
+    method (str, optional): The method to use for downsampling. Default is 'bicubic'.
 
     Returns
     -------
-    jax.numpy.ndarray
-        The downsampled field.
+    jax.numpy.ndarray: The downsampled field.
     """
     if factor == 1:
         return field
@@ -55,12 +53,11 @@ def save_image(timestep, fld, prefix=None):
 
     Parameters
     ----------
-    timestep : int
-        The timestep at which the field is being saved.
-    fld : jax.numpy.ndarray
-        The field to be saved. This should be a 2D or 3D JAX array. If the field is 3D, the magnitude of the field will be calculated and saved.
-    prefix : str, optional
-        A prefix to be added to the filename. The filename will be the name of the main script file by default.
+    timestep (int): The timestep at which the field is being saved.
+
+    fld (jax.numpy.ndarray): The field to be saved. This should be a 2D or 3D JAX array. If the field is 3D, the magnitude of the field will be calculated and saved.
+
+    prefix (str, optional): A prefix to be added to the filename. The filename will be the name of the main script file by default.
 
     Returns
     -------
@@ -104,23 +101,31 @@ def save_fields_hdf5_xdmf(
 
     Parameters
     ----------
-    timestep (int) : The timestep number to be associated with the saved fields.
-    fields (Dict[str, np.ndarray]) : A dictionary of fields to be saved. Each field must be an array-like object
+    timestep (int): The timestep number to be associated with the saved fields.
+    fields (Dict[str, np.ndarray]): A dictionary of fields to be saved. Each field must be an array-like object
     with dimensions (nx, ny) for 2D fields or (nx, ny, nz) for 3D fields, where:
-        - nx : int, number of grid points along the x-axis
-        - ny : int, number of grid points along the y-axis
-        - nz : int, number of grid points along the z-axis (for 3D fields only)
+    - nx : int, number of grid points along the x-axis
+    - ny : int, number of grid points along the y-axis
+    - nz : int, number of grid points along the z-axis (for 3D fields only)
     The key value for each field in the dictionary must be a string containing the name of the field.
 
-    output_dir (str, optional, default: '.') : The directory in which to save the HDF5 files. Defaults to the current directory.
-    prefix (str, optional, default: 'fields') : A prefix to be added to the filename. Defaults to 'fields'.
-    origin (tuple[float]) : The origin used for the file.
-    spacing (tuple[float]) : Spacing used for data points.
+    output_dir (str, optional, default: '.'):  The directory in which to save the HDF5 files. Defaults to the current directory.
+
+    prefix (str, optional, default: 'fields'): A prefix to be added to the filename. Defaults to 'fields'.
+
+    origin (tuple[float]): The origin used for the file.
+
+    spacing (tuple[float]): Spacing used for data points.
+
     compression (str): Compression algorithm used, supported options: `lzf`, `gzip` (default) and `szip`.
-    compression_level (int) : Options for the compression filter.
-    shuffle (bool) : Whether shuffle filter is applied. True by default.
-    target_chunk_bytes (int) : Chunk size to be used in bytes. 2 * 1024 * 1024 (2 MB) by default.
-    multi_timestep_file (bool) : Store data for all timesteps in a single, consolidated file.
+
+    compression_level (int): Options for the compression filter.
+
+    shuffle (bool): Whether shuffle filter is applied. True by default.
+
+    target_chunk_bytes (int): Chunk size to be used in bytes. 2 * 1024 * 1024 (2 MB) by default.
+
+    multi_timestep_file (bool): Store data for all timesteps in a single, consolidated file.
 
     Returns
     -------
@@ -582,14 +587,16 @@ def save_fields_vtk(timestep, fields, output_dir=".", prefix="fields"):
     Parameters
     ----------
     timestep (int): The timestep number to be associated with the saved fields.
+
     fields (Dict[str, np.ndarray]): A dictionary of fields to be saved. Each field must be an array-like object
     with dimensions (nx, ny) for 2D fields or (nx, ny, nz) for 3D fields, where:
-        - nx : int, number of grid points along the x-axis
-        - ny : int, number of grid points along the y-axis
-        - nz : int, number of grid points along the z-axis (for 3D fields only)
+    - nx : int, number of grid points along the x-axis
+    - ny : int, number of grid points along the y-axis
+    - nz : int, number of grid points along the z-axis (for 3D fields only)
     The key value for each field in the dictionary must be a string containing the name of the field.
 
     output_dir (str, optional, default: '.'): The directory in which to save the VTK files. Defaults to the current directory.
+
     prefix (str, optional, default: 'fields'): A prefix to be added to the filename. Defaults to 'fields'.
 
     Returns
@@ -688,6 +695,7 @@ def save_BCs_vtk(timestep, BCs, gridInfo, output_dir="."):
     Parameters
     ----------
     timestep (int): The timestep number to be associated with the saved fields.
+
     BCs (List[BC]): A list of boundary conditions to be saved. Each boundary condition must be an object of type BC.
 
     Returns
@@ -750,19 +758,17 @@ def rotate_geometry(indices, origin, axis, angle):
 
     Parameters
     ----------
-    indices : array-like
-        The indices of the voxels in the mesh.
-    origin : array-like
-        The coordinates of the origin of the rotation axis.
-    axis : array-like
-        The direction vector of the rotation axis. This should be a 3-element sequence.
-    angle : float
-        The angle by which to rotate the mesh, in radians.
+    indices (array-like): The indices of the voxels in the mesh.
+
+    origin (array-like): The coordinates of the origin of the rotation axis.
+
+    axis (array-like): The direction vector of the rotation axis. This should be a 3-element sequence.
+
+    angle (float): The angle by which to rotate the mesh, in radians.
 
     Returns
     -------
-    tuple
-        The indices of the voxels in the rotated mesh.
+    tuple: The indices of the voxels in the rotated mesh.
 
     Notes
     -----
@@ -779,19 +785,17 @@ def voxelize_stl(stl_filename, length_lbm_unit=None, tranformation_matrix=None, 
 
     Parameters
     ----------
-    stl_filename : str
-        The name of the STL file to be voxelized.
-    length_lbm_unit : float, optional
-        The unit length in LBM. Either this or 'pitch' must be provided.
-    tranformation_matrix : array-like, optional
-        A transformation matrix to be applied to the mesh before voxelization.
-    pitch : float, optional
-        The pitch of the voxel grid. Either this or 'length_lbm_unit' must be provided.
+    stl_filename (str): The name of the STL file to be voxelized.
+
+    length_lbm_unit (float, optional): The unit length in LBM. Either this or 'pitch' must be provided.
+
+    tranformation_matrix (array-like, optional): A transformation matrix to be applied to the mesh before voxelization.
+
+    pitch : (float, optional): The pitch of the voxel grid. Either this or 'length_lbm_unit' must be provided.
 
     Returns
     -------
-    trimesh.VoxelGrid, float
-        The voxelized mesh and the pitch of the voxel grid.
+    trimesh.VoxelGrid, float: The voxelized mesh and the pitch of the voxel grid.
 
     Notes
     -----
@@ -815,16 +819,16 @@ def axangle2mat(axis, angle, is_normalized=False):
     """Rotation matrix for rotation angle `angle` around `axis`
     Parameters
     ----------
-    axis : 3 element sequence
-       vector specifying axis for rotation.
-    angle : scalar
-       angle of rotation in radians.
-    is_normalized : bool, optional
-       True if `axis` is already normalized (has norm of 1).  Default False.
+    axis (3 element sequence): vector specifying axis for rotation.
+
+    angle (scalar): angle of rotation in radians.
+
+    is_normalized (bool, optional): True if `axis` is already normalized (has norm of 1).  Default False.
+
     Returns
     -------
-    mat : array shape (3,3)
-       rotation matrix for specified rotation
+    mat (array shape (3,3)): rotation matrix for specified rotation
+
     Notes
     -----
     From : https://github.com/matthew-brett/transforms3d
@@ -909,61 +913,3 @@ def q_criterion(u):
     q = 0.5 * (omega_dot_omega - s_dot_s)
 
     return norm_mu, q
-
-
-def consolidated_mask(rho_tree, solid_indices, rho_vapor=None, rho_liquid=None):
-    """
-    Compute consolidate mask to identify all components and solid nodes in the domain. For single component system, it can be used
-    to isolate vapor and liquid region, which requires a density threshold for liquid and vapor regions (rho_liquid, rho_vapor
-    respectively).
-
-    Parameters
-    ----------
-    rho_tree: list[numpy.ndarray]
-    solid_indices: numpy.ndarray
-    rho_vapor: float; Default: None
-    rho_liquid: float; Default: None
-
-    Returns
-    -------
-    c_mask: numpy.ndarray
-    """
-    n_components = len(rho_tree)
-    if (n_components < 2) and (rho_vapor is None):
-        raise ValueError("Consolidated mask for single component system requires rho_vapor and rho_liquid")
-        rho = rho_tree[0][..., 0]
-        c_mask = 2 * (rho <= rho_vapor) + 3 * (rho > rho_vapor)
-        c_mask = c_mask.at[solid_indices].set(1)
-        return c_mask
-    if n_components == 2:
-        rho_1 = rho_tree[0][..., 0]
-        rho_2 = rho_tree[1][..., 0]
-        c_mask = 3 * (rho_1 <= rho_2) + 2 * (rho_1 > rho_2)
-        c_mask = c_mask.at[solid_indices].set(1)
-        return c_mask
-    else:
-        raise NotImplementedError("For n_components > 2, consolidated mask computation has not been implemented")
-
-
-def isosurface(c_mask):
-    """
-    Returns a list of meshes using Pyvista's isosurface functionality for a given consolidated mask. The consolidated_mask has
-    minimum value of 1 (solid nodes) with increasing values representing all other components (2, 3 ... n_components). The meshes can be used to
-    area and volume occupied by each component.
-
-    Parameters
-    ----------
-    c_mask: numpy.ndarray
-    n_components: int
-
-    Returns:
-    -------
-    meshes: list[pyvista.core.pointset.PolyData]
-    """
-    nx, ny, nz = c_mask.shape()
-    n_components = np.max(c_mask)
-    meshes = []
-    grid = pv.ImageData(dimensions=(nx, ny, nz), spacing=(1, 1, 1), origin=(0, 0, 0))
-    for i in range(2, n_components + 2):
-        meshes.append(grid.contour([i], consolidated_mask.flatten(), method="marching_cubes"))
-    return meshes
