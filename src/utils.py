@@ -18,6 +18,43 @@ from termcolor import colored
 import __main__
 
 
+def read_raw_volume(path, shape, dtype="u1", endian="<", order="C", use_memmap=False):
+    """
+    Read a raw binary volume using NumPy.
+
+    Parameters
+    ----------
+    path : str or Path
+        Path to the raw file.
+    shape : tuple[int, ...]
+        Volume shape, e.g. (1000, 1000, 1000).
+    dtype : str or np.dtype
+        Element type without endianness, e.g. "u1", "i1", "u2", "f4".
+        For 8-bit char data use "u1" (unsigned) or "i1" (signed).
+    endian : str
+        "<" little-endian, ">" big-endian.
+    order : str
+        "C" for C-order, "F" for Fortran-order.
+    use_memmap : bool
+        If True, return a memmap (does not load full array into RAM).
+
+    Returns
+    -------
+    np.ndarray or np.memmap
+    """
+    dtype = np.dtype(endian + np.dtype(dtype).str[1:])
+    expected = int(np.prod(shape))
+
+    if use_memmap:
+        data = np.memmap(path, dtype=dtype, mode="r", shape=shape, order=order)
+        return data
+
+    data = np.fromfile(path, dtype=dtype, count=expected)
+    if data.size != expected:
+        raise ValueError(f"File has {data.size} elements, expected {expected} for shape {shape}.")
+    return data.reshape(shape, order=order)
+
+
 @partial(jit, static_argnums=(1, 2))
 def downsample_field(field, factor, method="bicubic"):
     """
