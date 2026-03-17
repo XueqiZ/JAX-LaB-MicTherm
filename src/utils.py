@@ -12,7 +12,7 @@ import trimesh
 from jax import jit
 from jax.image import resize
 from matplotlib import cm
-from path import Path
+from pathlib import Path
 from termcolor import colored
 
 import __main__

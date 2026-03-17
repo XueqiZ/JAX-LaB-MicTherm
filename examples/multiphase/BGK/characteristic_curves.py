@@ -169,7 +169,7 @@ class DropletOnWall3D(MultiphaseBGK):
         return p_tree
 
     @partial(jit, static_argnums=(0,))
-    def compute_total_pressure(self, p_tree):
+    def compute_total_pressure(self, p_tree, rho_tree=None):
         p_water = p_tree[0]
         p_air = p_tree[1]
         return p_water + p_air + 3 * self.g_kkprime[0, 1] * p_air * p_water
@@ -250,7 +250,7 @@ class PorousMedia(MultiphaseBGK):
         return p_tree
 
     @partial(jit, static_argnums=(0,))
-    def compute_total_pressure(self, p_tree):
+    def compute_total_pressure(self, p_tree, rho_tree=None):
         p_water = p_tree[0]
         p_air = p_tree[1]
         return p_water + p_air + 3 * self.g_kkprime[0, 1] * p_air * p_water
@@ -410,13 +410,7 @@ class PorousMedia(MultiphaseBGK):
         )
 
         screen_buffer = pg.render.contour(rho_volume, threshold=0.95, colormap=red, camera=camera)
-        screen_buffer = pg.render.contour(
-            boundary_volume,
-            camera,
-            threshold=0.95,
-            colormap=grey,
-            screen_buffer=screen_buffer,
-        )
+        screen_buffer = pg.render.contour(boundary_volume, camera, threshold=0.95, colormap=grey, screen_buffer=screen_buffer)
         screen_buffer = pg.render.wireframe(
             lower_bound=(0, 0, 0),
             upper_bound=((self.nx - 2 * buffer) * dx, self.ny * dy, self.nz * dz),
