@@ -4,6 +4,9 @@
 JAX-LaB is a fully differentiable, accelerated multiphysics and multiphase 2D/3D Lattice Boltzmann Method (LBM) Python library written in [JAX](https://github.com/google/jax) and it provides a unified workflow for forward and
 inverse modeling of multiphase flows. JAX-LaB is an extension of [XLB](https://github.com/Autodesk/XLB) and adds support multiphase and multiphysics flows to the original library.
 
+## Accompanying Paper
+The accompanying paper, published in Journal of Advances in Modeling Earth Systems (JAMES), is available [here](https://doi.org/10.1029/2025MS005313).
+
 ## Showcase
 <!-- <p align="center">
   <img src="assets/capillary_fingering.gif" alt="" width="600">
@@ -55,7 +58,6 @@ inverse modeling of multiphase flows. JAX-LaB is an extension of [XLB](https://g
 <p align="center">
 Temporal evolution of the density field determined using neural network for the inverse multiphase flow control problem of forming a droplet at t = 900. The MLP output is used as the initial condition for LBM and the backpropagation step during training leverages the auto-differentiation capabilities of JAX-LaB (see <a href="https://doi.org/10.1029/2025MS005313">paper</a> for details).
 </p>
-
 <br>
 
 ## Key Features
@@ -134,24 +136,6 @@ user modification.
 
 - **Convective Outflow BC**: Convective outflow boundary condition, useful for porous media flows.
 
-## Accompanying Paper
-Accompanying paper, published in Journal of Advances in Modeling Earth Systems (JAMES), is available [here](https://doi.org/10.1029/2025MS005313).
-
-<!-- ## Citing XLB
-
-If you use XLB in your research, please cite the following paper:
-
-```
-@article{ataei2024xlb,
-  title={{XLB}: A differentiable massively parallel lattice {Boltzmann} library in {Python}},
-  author={Ataei, Mohammadmehdi and Salehipour, Hesam},
-  journal={Computer Physics Communications},
-  volume={300},
-  pages={109187},
-  year={2024},
-  publisher={Elsevier}
-}
-``` -->
 
 ## Installation Guide
 
