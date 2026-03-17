@@ -67,7 +67,7 @@ class Droplet3D(MultiphaseBGK):
         return p_tree
 
     @partial(jit, static_argnums=(0,))
-    def compute_total_pressure(self, p_tree):
+    def compute_total_pressure(self, p_tree, rho_tree=None):
         p_water = p_tree[0]
         p_air = p_tree[1]
         return p_water + p_air + 3 * self.g_kkprime[0, 1] * p_air * p_water
