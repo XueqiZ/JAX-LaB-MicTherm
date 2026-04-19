@@ -1356,6 +1356,7 @@ class ExtrapolationOutflowMultiphase(BoundaryCondition):
         fbd = fout[self.indices]
         f_nbr = fout[self.indices_nbr]
         f_next_nbr = fout[self.indices_next_nbr]
+        # fbd = fbd.at[self.bindex, ...].set(2 * f_nbr[self.bindex, ...] - f_next_nbr[self.bindex, ...])
         fbd = fbd.at[self.bindex, self.imissing].set(2 * f_nbr[self.bindex, self.imissing] - f_next_nbr[self.bindex, self.imissing])
         return fbd
 
