@@ -21,10 +21,10 @@ The accompanying paper, published in Journal of Advances in Modeling Earth Syste
   Capillary rise in parallel plates (single component, multiphase simulation)
 </p> -->
 <p align="center">
-  <img src="assets/3D_evaporation.gif" alt="" width="600">
+  <img src="assets/3D_evaporation_fontainebleau.gif" alt="" width="600">
 </p>
 <p align="center">
-    Time evolution of liquid distribution in a porous medium during evaporation. Two-component (air–water) system simulated with the Cascaded (central-moment) collision model.
+    Time evolution of liquid distribution in a Fontainebleau sandstone during evaporation simulated with the Cascaded (central-moment) collision model.
 </p>
 <p align="center">
   <img src="assets/droplet_impact.gif" alt="" width="600">
