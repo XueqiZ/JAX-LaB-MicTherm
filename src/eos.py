@@ -1,5 +1,6 @@
 from functools import partial
 
+import jax
 from jax import jit
 from jax.tree import map
 
@@ -127,6 +128,54 @@ class VanderWaal(EOS):
 
     @partial(jit, static_argnums=(0,), inline=True)
     def EOS(self, rho_tree):
+        def eos_with_debug(a, b, R, rho):
+            p = (rho * R * self.T) / (1.0 - b * rho) - a * rho**2
+            jax.debug.print("VdW EOS — p min/max = {}/{}", jnp.min(p), jnp.max(p))
+            jax.debug.print("VdW EOS — rho min/max = {}/{}", jnp.min(rho), jnp.max(rho))
+            return p
+
+        return map(eos_with_debug, self.a, self.b, self.R, rho_tree)
+
+    @partial(jit, static_argnums=(0,), inline=True)
+    def EOS_thermal(self, rho_tree, T):
+        eos = lambda a, b, R, rho: (rho * R * T) / (1.0 - b * rho) - a * rho**2
+        return map(eos, self.a, self.b, self.R, rho_tree)
+
+    @partial(jit, static_argnums=(0,), inline=True)
+    def drho_dT(self, rho_tree, T):
+        drho_dT = lambda b, R, rho: (rho * R) / (1.0 - b * rho)
+        return map(lambda b, R, rho: drho_dT(b, R, rho), self.b, self.R, rho_tree)
+
+
+
+class originalVdW(EOS):
+    """
+    Define multiphase model using the VanderWaals EOS.
+
+    Parameters
+    ----------
+    a: list
+    b: list
+    R: list
+    T: float or jax.numpy.ndarray
+
+    Reference
+    ---------
+    1. Reprint of: The Equation of State for Gases and Liquids. The Journal of Supercritical Fluids,
+    100th year Anniversary of van der Waals' Nobel Lecture, 55, no. 2 (2010): 403–14. https://doi.org/10.1016/j.supflu.2010.11.001.
+
+    Notes
+    -----
+
+    EOS is given by:
+        p = (rho*R*T)/(1 - b*rho) - a*rho^2
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    @partial(jit, static_argnums=(0,), inline=True)
+    def EOS(self, rho_tree):
         eos = lambda a, b, R, rho: (rho * R * self.T) / (1.0 - b * rho) - a * rho**2
         return map(eos, self.a, self.b, self.R, rho_tree)
 
@@ -139,6 +188,103 @@ class VanderWaal(EOS):
     def drho_dT(self, rho_tree, T):
         drho_dT = lambda b, R, rho: (rho * R) / (1.0 - b * rho)
         return map(lambda b, R, rho: drho_dT(b, R, rho), self.b, self.R, rho_tree)
+
+
+
+class MicTherm(EOS):
+    """
+    Define multiphase model using the VanderWaals EOS.
+
+    Parameters
+    ----------
+    a: list
+    b: list
+    R: list
+    T: float or jax.numpy.ndarray
+
+    Reference
+    ---------
+    1. Reprint of: The Equation of State for Gases and Liquids. The Journal of Supercritical Fluids,
+    100th year Anniversary of van der Waals' Nobel Lecture, 55, no. 2 (2010): 403–14. https://doi.org/10.1016/j.supflu.2010.11.001.
+
+    Notes
+    -----
+
+    EOS is given by:
+        p = (rho*R*T)/(1 - b*rho) - a*rho^2
+    """
+
+    def __init__(self, **kwargs):
+        self.temperature_field_type = kwargs.get("temperature_field_type", "isothermal")
+        self.T = kwargs.get("T")
+        self.rho_grid = jnp.asarray(kwargs.get("rho_grid"))
+        self.p_grid = jnp.asarray(kwargs.get("p_grid"))
+        self.T_grid = kwargs.get("T_grid")
+        self.dpdT_grid = kwargs.get("dpdT_grid")
+
+        if self.rho_grid.ndim != 1:
+            raise ValueError("rho_grid must be a 1D array")
+        if self.p_grid.ndim not in (1, 2):
+            raise ValueError("p_grid must be 1D or 2D")
+
+        sort_idx = jnp.argsort(self.rho_grid)
+        self.rho_grid = self.rho_grid[sort_idx]
+
+        if self.p_grid.ndim == 1:
+            if self.p_grid.shape[0] != self.rho_grid.shape[0]:
+                raise ValueError("1D p_grid must have the same length as rho_grid")
+            self.p_grid = self.p_grid[sort_idx]
+            self.T_grid = None
+        else:
+            if self.p_grid.shape[1] != self.rho_grid.shape[0]:
+                raise ValueError("2D p_grid must have shape (len(T_grid), len(rho_grid))")
+            if self.T_grid is None:
+                raise ValueError("T_grid must be provided when p_grid is 2D")
+
+            self.T_grid = jnp.asarray(self.T_grid)
+            if self.T_grid.ndim != 1 or self.T_grid.shape[0] != self.p_grid.shape[0]:
+                raise ValueError("T_grid must be 1D with length p_grid.shape[0]")
+
+            t_sort_idx = jnp.argsort(self.T_grid)
+            self.T_grid = self.T_grid[t_sort_idx]
+            self.p_grid = self.p_grid[t_sort_idx, :][:, sort_idx]
+
+        if self.dpdT_grid is not None:
+            self.dpdT_grid = jnp.asarray(self.dpdT_grid)
+            if self.dpdT_grid.shape != self.p_grid.shape:
+                raise ValueError("dpdT_grid must have the same shape as p_grid")
+            if self.dpdT_grid.ndim == 1:
+                self.dpdT_grid = self.dpdT_grid[sort_idx]
+            else:
+                self.dpdT_grid = self.dpdT_grid[t_sort_idx, :][:, sort_idx]
+        elif self.p_grid.ndim == 2:
+            self.dpdT_grid = jnp.gradient(self.p_grid, self.T_grid, axis=0)
+        else:
+            self.dpdT_grid = jnp.zeros_like(self.p_grid)
+
+    def _interp_rho(self, table, rho):
+        return jnp.interp(rho, self.rho_grid, table)
+
+    def _interp_rho_T(self, table, rho, T):
+        values_at_T = jax.vmap(lambda table_row: jnp.interp(rho, self.rho_grid, table_row))(table)
+        return jnp.interp(T, self.T_grid, values_at_T)
+
+    def _lookup(self, table, rho, T):
+        if self.T_grid is None:
+            return self._interp_rho(table, rho)
+        return self._interp_rho_T(table, rho, T)
+
+    @partial(jit, static_argnums=(0,), inline=True)
+    def EOS(self, rho_tree):
+        return map(lambda rho: self._lookup(self.p_grid, rho, self.T), rho_tree)
+
+    @partial(jit, static_argnums=(0,), inline=True)
+    def EOS_thermal(self, rho_tree, T):
+        return map(lambda rho: self._lookup(self.p_grid, rho, T), rho_tree)
+
+    @partial(jit, static_argnums=(0,), inline=True)
+    def drho_dT(self, rho_tree, T):
+        return map(lambda rho: self._lookup(self.dpdT_grid, rho, T), rho_tree)
 
 
 class Redlich_Kwong(EOS):
