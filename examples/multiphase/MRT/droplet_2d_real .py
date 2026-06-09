@@ -77,17 +77,32 @@ class Droplet2D(MultiphaseMRT):
         
 
 MIC_THERM_USER_PARAMETERS = {
+    # General
+    "units": "SI",
+    "Output": "no",
+    "Debug": "no",
+    "stability": "no",
+
+    # EOS / model settings
     "N_components": 1,
     "Substance_ID1": 0,
     "PotModel_1": "LJ.pm",
-    "units": "SI",
-    "EOS": "vanderWaals",
-    "Output": "no",
-    "Debug": "no",
-    "chainlength_1": 1,
-    "b_VDW_1": 0.0952,
-    "a_VDW_1": 0.1837,
+    "EOS": "PC_SAFT",
+    "IDEAL": "IdealQM",
+
+    # Substance parameters
+    "chainlength_1": 2.811,
+    "sigma_1": 3.369,
+    "epsilon_1": 176.935,
     "molar_mass_1": 114.04,
+    "CAS_number_1": "29118-24-9",
+
+    # Polar contribution
+    "Polar_1": "Jog",
+    "Dipolemoment_1": 1.440,
+    "N_Dipolemoment_1": 0.33,
+
+    # numerical
     "dT": 1.0,
 }
 
@@ -107,11 +122,11 @@ if __name__ == "__main__":
     )
 
     # reference: publication 
-    Tc = 4/7
-    rhoc = 7/2
-    pc = (9/49) / (27 * (2/21) ** 2)
+    Tc = mictherm_values[0,0]
+    rhoc = mictherm_values[0,1]
+    pc = mictherm_values[0,2]
 
-    T = 0.8 * Tc
+    T = 0.95 * Tc
 
     factorTc = mictherm_values[0,0]/Tc
     factorRho = mictherm_values[0,1]/rhoc

@@ -114,15 +114,10 @@ def save_image(timestep, fld, prefix=None):
     if len(fld.shape) > 3:
         raise ValueError("The input field should be 2D!")
     elif len(fld.shape) == 3:
-        if fld.shape[-1] == 1:
-            fld = jnp.squeeze(fld, axis=-1)
-        elif fld.shape[-1] in (2, 3):
-            fld = jnp.linalg.norm(fld, axis=-1)
-        else:
-            raise ValueError("3D inputs must be scalar fields with a singleton last axis or vector fields with 2 or 3 components.")
+        fld = np.sqrt(fld[..., 0] ** 2 + fld[..., 1] ** 2)
 
     plt.clf()
-    plt.imsave(fname + ".png", np.asarray(fld).T, cmap=cm.nipy_spectral, origin="lower")
+    plt.imsave(fname + ".png", fld.T, cmap=cm.nipy_spectral, origin="lower")
 
 
 def save_fields_hdf5_xdmf(
