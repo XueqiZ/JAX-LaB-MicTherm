@@ -130,8 +130,8 @@ class VanderWaal(EOS):
     def EOS(self, rho_tree):
         def eos_with_debug(a, b, R, rho):
             p = (rho * R * self.T) / (1.0 - b * rho) - a * rho**2
-            jax.debug.print("VdW EOS — p min/max = {}/{}", jnp.min(p), jnp.max(p))
-            jax.debug.print("VdW EOS — rho min/max = {}/{}", jnp.min(rho), jnp.max(rho))
+            # jax.debug.print("VdW EOS — p min/max = {}/{}", jnp.min(p), jnp.max(p))
+            # jax.debug.print("VdW EOS — rho min/max = {}/{}", jnp.min(rho), jnp.max(rho))
             return p
 
         return map(eos_with_debug, self.a, self.b, self.R, rho_tree)

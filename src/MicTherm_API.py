@@ -50,27 +50,28 @@ class MatlabDoubleConverter:
 
 
 class MicThermAPIClient:
-    def __init__(self):
+    DEFAULT_USER_PARAMETERS = {
+        # General settings
+        "N_components": 1,
+        "Substance_ID1": 0,
+        "PotModel_1": "LJ.pm",
+        "units": "SI",
+        "EOS": "vanderWaals",
+        "Output": "no",
+        "Debug": "no",
+        # Substance-specific parameters (R-1234yf)
+        "chainlength_1": 1,
+        "b_VDW_1": 0.0952,
+        "a_VDW_1": 0.1837,
+        "molar_mass_1": 114.04,
+        "dT": 1.0,
+    }
+
+    def __init__(self, base_user_parameters=None, **user_parameter_kwargs):
         # (1) API initialisieren
         self.api = MicTherm.initialize()
 
-        self.base_user_parameters = [
-            # General settings
-            "N_components = 1",
-            "Substance_ID1 = 0",
-            "PotModel_1 = LJ.pm",
-            "units = SI",
-            "EOS = vanderWaals",
-            "Output = no",
-            "Debug = no",
-
-            # Substance-specific parameters (R-1234yf)
-            "chainlength_1 = 1",
-            "b_VDW_1 = 0.0952",  # VDW_b
-            "a_VDW_1 = 0.1837",  # VDW_a
-            "molar_mass_1 = 114.04",
-            "dT = 1.0",  # Temperature step for numerical derivatives
-        ]
+        self.base_user_parameters = self._build_base_user_parameters(base_user_parameters)
 
         self.mode_parameters = {
             "userproperties": [
@@ -88,7 +89,33 @@ class MicThermAPIClient:
             ],
         }
 
-    def build_user_parameters(self, mode, t_iso=None):
+        self.user_parameter_kwargs = user_parameter_kwargs
+
+    @staticmethod
+    def _format_user_parameter(key, value):
+        if isinstance(value, bool):
+            value = "yes" if value else "no"
+        return f"{key} = {value}"
+
+    @classmethod
+    def _build_base_user_parameters(cls, base_user_parameters):
+        if base_user_parameters is None:
+            return [
+                cls._format_user_parameter(key, value)
+                for key, value in cls.DEFAULT_USER_PARAMETERS.items()
+            ]
+
+        if isinstance(base_user_parameters, dict):
+            parameters = {**cls.DEFAULT_USER_PARAMETERS, **base_user_parameters}
+            return [
+                cls._format_user_parameter(key, value)
+                for key, value in parameters.items()
+                if value is not None
+            ]
+
+        return list(base_user_parameters)
+
+    def build_user_parameters(self, mode, t_iso=None, **user_parameter_kwargs):
         mode_key = mode.lower()
         if mode_key not in self.mode_parameters:
             raise ValueError("mode must be 'userproperties', 'criticalpoint', 'VLE_full', or 'VLE_Iso'")
@@ -97,10 +124,17 @@ class MicThermAPIClient:
         if mode_key == "vle_iso" and t_iso is not None:
             user_parameters = user_parameters + [f"T_iso = {t_iso}"]
 
+        extra_parameters = {**self.user_parameter_kwargs, **user_parameter_kwargs}
+        user_parameters.extend(
+            self._format_user_parameter(key, value)
+            for key, value in extra_parameters.items()
+            if value is not None
+        )
+
         return user_parameters
 
-    def call_example(self, init_mode, rho, T, p, x, mode, t_iso=None):
-        user_parameters_in = self.build_user_parameters(mode, t_iso=t_iso)
+    def call_example(self, init_mode, rho, T, p, x, mode, t_iso=None, **user_parameter_kwargs):
+        user_parameters_in = self.build_user_parameters(mode, t_iso=t_iso, **user_parameter_kwargs)
         return self.api.API_example(
             init_mode,
             rho,
@@ -112,14 +146,27 @@ class MicThermAPIClient:
         )
 
 
-def compute_mictherm(T, rho, p, x, mode, t_iso=None, init_mode="uninitialized"):
+def compute_mictherm(
+    T,
+    rho,
+    p,
+    x,
+    mode,
+    t_iso=None,
+    init_mode="uninitialized",
+    base_user_parameters=None,
+    **user_parameter_kwargs,
+):
     """
     Call MicTherm API with given inputs and return Name, Units, Value.
 
     Inputs T, rho, p, x can be Python scalars/lists/tuples or matlab.double.
     Value is returned as a numpy array.
     """
-    client = MicThermAPIClient()
+    client = MicThermAPIClient(
+        base_user_parameters=base_user_parameters,
+        **user_parameter_kwargs,
+    )
 
     T_in = T if isinstance(T, matlab.double) else MatlabDoubleConverter.convert(T)
     rho_in = rho if isinstance(rho, matlab.double) else MatlabDoubleConverter.convert(rho)
@@ -134,6 +181,7 @@ def compute_mictherm(T, rho, p, x, mode, t_iso=None, init_mode="uninitialized"):
         x_in,
         mode=mode,
         t_iso=t_iso,
+        **user_parameter_kwargs,
     )
 
     return Name, Units, numpy.asarray(Value)

@@ -76,6 +76,21 @@ class Droplet2D(MultiphaseMRT):
         save_image(timestep, u)
         
 
+MIC_THERM_USER_PARAMETERS = {
+    "N_components": 1,
+    "Substance_ID1": 0,
+    "PotModel_1": "LJ.pm",
+    "units": "SI",
+    "EOS": "vanderWaals",
+    "Output": "no",
+    "Debug": "no",
+    "chainlength_1": 1,
+    "b_VDW_1": 0.0952,
+    "a_VDW_1": 0.1837,
+    "molar_mass_1": 114.04,
+    "dT": 1.0,
+}
+
 
 if __name__ == "__main__":
     # calculate critical point properties using MicTherm API
@@ -88,6 +103,7 @@ if __name__ == "__main__":
         t_iso=None,
         init_mode="uninitialized",
         print_output=False,
+        base_user_parameters=MIC_THERM_USER_PARAMETERS,
     )
 
     # reference: publication 
@@ -106,6 +122,7 @@ if __name__ == "__main__":
         mode="vle_iso",
         t_iso=T*factorTc,  # scale Tiso by factorTc to be consistent with critical point properties
         print_output=False,
+        base_user_parameters=MIC_THERM_USER_PARAMETERS,
     )
     mictherm_rho_l = mictherm_values[0, 1] 
     mictherm_rho_g = mictherm_values[0, 2]
@@ -119,6 +136,7 @@ if __name__ == "__main__":
         rho_range=[mictherm_rho_g * 0.7, mictherm_rho_l * 1.3],
         T_range=mictherm_T,
         x_range=1,
+        base_user_parameters=MIC_THERM_USER_PARAMETERS,
     )
     p_grid = mictherm_values[:, 1]/factorPc 
     rho_grid = Inputrho/factorRho 

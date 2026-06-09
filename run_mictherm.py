@@ -22,6 +22,7 @@ def run_mictherm_func(
     t_iso=None,
     init_mode="uninitialized",
     print_output=True,
+    **mictherm_kwargs,
 ):
     """Run compute_mictherm with provided inputs and return (names, units, values).
 
@@ -44,6 +45,7 @@ def run_mictherm_func(
         mode=mode,  # 'userproperties', 'criticalpoint', 'VLE_full', or 'VLE_Iso'
         init_mode=init_mode,
         t_iso=t_iso,
+        **mictherm_kwargs,
         # t_iso is available for callers if needed; pass via other interfaces if supported
     )
 
@@ -66,6 +68,7 @@ def mictherm_grid(
     T_range=None,
     p_range=None,
     x_range=None,
+    **mictherm_kwargs,
 ):
     if rho_range is not None:
         if isinstance(rho_range, (int, float)):
@@ -95,6 +98,7 @@ def mictherm_grid(
         p=p,
         x=x,
         print_output=False,
+        **mictherm_kwargs,
     )
     return names, units, values, T, p, rho, x
 

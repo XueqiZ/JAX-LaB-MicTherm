@@ -7,18 +7,11 @@ The collision matrix is based on:
 """
 
 import os
-import sys
-from pathlib import Path
 from jax import config
 import numpy as np
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-from run_mictherm import run_mictherm_func, mictherm_grid
 from src.lattice import LatticeD2Q9
-from src.eos import MicTherm
+from src.eos import VanderWaal
 from src.utils import *
 from src.multiphase import MultiphaseMRT
 
@@ -74,55 +67,9 @@ class Droplet2D(MultiphaseMRT):
         print(f"Pressure difference: {pressure_difference}")
         save_fields_vtk(timestep, fields, "output", "data")
         save_image(timestep, u)
-        
 
 
 if __name__ == "__main__":
-    # calculate critical point properties using MicTherm API
-    mictherm_names, mictherm_units, mictherm_values = run_mictherm_func(
-        mode="criticalpoint",
-        T=None,
-        rho=None,
-        p=None,
-        x=None,
-        t_iso=None,
-        init_mode="uninitialized",
-        print_output=False,
-    )
-
-    # reference: publication 
-    Tc = 4/7
-    rhoc = 7/2
-    pc = (9/49) / (27 * (2/21) ** 2)
-
-    T = 0.8 * Tc
-
-    factorTc = mictherm_values[0,0]/Tc
-    factorRho = mictherm_values[0,1]/rhoc
-    factorPc = mictherm_values[0,2]/pc
-
-    # calculate VLE properties using MicTherm API for Tiso
-    mictherm_names, mictherm_units, mictherm_values = run_mictherm_func(
-        mode="vle_iso",
-        t_iso=T*factorTc,  # scale Tiso by factorTc to be consistent with critical point properties
-        print_output=False,
-    )
-    mictherm_rho_l = mictherm_values[0, 1] 
-    mictherm_rho_g = mictherm_values[0, 2]
-    mictherm_T = T * factorTc  # scale T by factorTc to be consistent with critical point properties
-    rho_l = mictherm_rho_l / factorRho  # scale back by factorRho
-    rho_g = mictherm_rho_g / factorRho  # scale back by factorRho
-
-    mictherm_names, mictherm_units, mictherm_values, InputT, Inputp, Inputrho, Inputx= mictherm_grid(
-        mode="userproperties",
-        step=100,
-        rho_range=[mictherm_rho_g * 0.7, mictherm_rho_l * 1.3],
-        T_range=mictherm_T,
-        x_range=1,
-    )
-    p_grid = mictherm_values[:, 1]/factorPc 
-    rho_grid = Inputrho/factorRho 
-    # scale back by factorPc;
     e = LatticeD2Q9().c.T
     en = np.linalg.norm(e, axis=1)
 
@@ -147,6 +94,10 @@ if __name__ == "__main__":
     b = 2 / 21
     R = 1.0
 
+    rho_l = 6.764470400
+    rho_g = 0.838834226
+    Tc = 0.5714285714
+    T = 0.8 * Tc
 
     s_rho = [0.0]
     s_e = [1.2]
@@ -155,8 +106,8 @@ if __name__ == "__main__":
     s_q = [1.0]
     s_v = [1.0]
 
-    kwargs = {"rho_grid": rho_grid, "p_grid": p_grid, "T": T}
-    eos = MicTherm(**kwargs)
+    kwargs = {"a": [a], "b": [b], "R": [R], "T": T}
+    eos = VanderWaal(**kwargs)
 
     precision = "f32/f32"
     kwargs = {
@@ -189,4 +140,4 @@ if __name__ == "__main__":
 
     os.system("rm -rf output*/ *.vtk")
     sim = Droplet2D(**kwargs)
-    sim.run(60000)
+    sim.run(50000)
