@@ -21,6 +21,7 @@ from src.lattice import LatticeD2Q9
 from src.eos import MicTherm
 from src.utils import *
 from src.multiphase import MultiphaseMRTTvar
+from mpl_toolkits.mplot3d import Axes3D
 
 # config.update("jax_default_matmul_precision", "float32")
 
@@ -114,25 +115,43 @@ if __name__ == "__main__":
     rho_l = mictherm_rho_l / factorRho  # scale back by factorRho
     rho_g = mictherm_rho_g / factorRho  # scale back by factorRho
 
-    rho_step = 100
-    T_step = 25
-    mictherm_T_grid = np.linspace(mictherm_T * 0.9, mictherm_T * 1.1, T_step)
-    p_grid_rows = []
-    rho_grid = None
-    for mictherm_T_local in mictherm_T_grid:
-        mictherm_names, mictherm_units, mictherm_values, InputT, Inputp, Inputrho, Inputx = mictherm_grid(
-            mode="userproperties",
-            step=rho_step,
-            rho_range=[mictherm_rho_g * 0.7, mictherm_rho_l * 1.3],
-            T_range=mictherm_T_local,
-            x_range=1,
-        )
-        p_grid_rows.append(mictherm_values[:, 1] / factorPc)
-        if rho_grid is None:
-            rho_grid = Inputrho / factorRho
+    # Create meshgrid to combine rho and T dimensions
 
-    p_grid = np.vstack(p_grid_rows)
-    T_grid = mictherm_T_grid / factorTc
+    rho_step = 10
+    T_step = 10
+    mictherm_T_grid = np.linspace(mictherm_T * 0.9, mictherm_T * 1.1, T_step)
+    mictherm_rho_grid = np.linspace(mictherm_rho_g * 0.7, mictherm_rho_l * 1.3, rho_step) 
+    rho_grid, T_grid = np.meshgrid(mictherm_rho_grid, mictherm_T_grid)
+    T_array = T_grid.flatten()
+    rho_array = rho_grid.flatten()
+    
+    # Generate array and calculate mictherm_grid
+    mictherm_names, mictherm_units, mictherm_values, InputT, Inputp, Inputrho, Inputx = mictherm_grid(
+        mode="userproperties",
+        T=T_array,
+        rho=rho_array,
+        p=None,
+        x=np.ones_like(T_array),
+        print_output=False,
+    )
+    T_grid = InputT.reshape(mictherm_T_grid.shape[0], mictherm_rho_grid.shape[0]) /factorTc  # scale back by factorTc
+    rho_grid = Inputrho.reshape(mictherm_T_grid.shape[0], mictherm_rho_grid.shape[0]) / factorRho  # scale back by factorRho
+    p_grid = mictherm_values[:, 1].reshape(mictherm_T_grid.shape[0], mictherm_rho_grid.shape[0]) / factorPc  # scale back by factorPc
+    
+
+
+    fig = plt.figure(figsize=(10, 7))
+    ax = fig.add_subplot(111, projection='3d')
+    
+    ax.plot_surface(rho_grid, T_grid, p_grid, cmap=cm.nipy_spectral, alpha=0.8)
+    ax.set_xlabel(r"$\rho$")
+    ax.set_ylabel(r"$T$")
+    ax.set_zlabel(r"$p$")
+    ax.set_title("MicTherm pressure grid (3D)")
+
+    plt.tight_layout()
+    plt.show()
+
     # scale back by factorPc;
     e = LatticeD2Q9().c.T
     en = np.linalg.norm(e, axis=1)

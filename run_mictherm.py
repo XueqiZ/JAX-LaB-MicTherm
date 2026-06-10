@@ -63,33 +63,9 @@ def mictherm_grid(
     p=None,
     x=None,
     mode="userproperties",
-    step=None,
-    rho_range=None,
-    T_range=None,
-    p_range=None,
-    x_range=None,
+    print_output=False,
     **mictherm_kwargs,
 ):
-    if rho_range is not None:
-        if isinstance(rho_range, (int, float)):
-            rho = np.full(step, rho_range)
-        else:
-            rho = np.linspace(rho_range[0], rho_range[1], step)
-    if T_range is not None:
-        if isinstance(T_range, (int, float)):
-            T = np.full(step, T_range)
-        else:
-            T = np.linspace(T_range[0], T_range[1], step)
-    if p_range is not None:
-        if isinstance(p_range, (int, float)):
-            p = np.full(step, p_range)
-        else:
-            p = np.linspace(p_range[0], p_range[1], step)
-    if x_range is not None:
-        if isinstance(x_range, (int, float)):
-            x = np.full(step, x_range)
-        else:
-            x = np.linspace(x_range[0], x_range[1], step)
     
     names, units, values = run_mictherm_func(
         mode=mode,
@@ -97,7 +73,7 @@ def mictherm_grid(
         rho=rho,
         p=p,
         x=x,
-        print_output=False,
+        print_output=print_output,
         **mictherm_kwargs,
     )
     return names, units, values, T, p, rho, x
