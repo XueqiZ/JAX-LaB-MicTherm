@@ -54,7 +54,7 @@ class EOS:
     def T(self, value):
         if value is None and self.temperature_field_type == "isothermal":
             raise ValueError("Temperature value must be provided for isothermal case")
-        if self.temperature_field_type == "isothermal" and value < 0:
+        if self.temperature_field_type == "isothermal" and bool(jnp.any(jnp.asarray(value) < 0)):
             raise ValueError("Temperature cannot be negative")
         self._T = value
 
@@ -214,18 +214,61 @@ class MicTherm(EOS):
         p = (rho*R*T)/(1 - b*rho) - a*rho^2
     """
 
+    @staticmethod
+    def _axis_from_grid(grid, expected_shape, name):
+        if grid is None:
+            return None, None
+
+        grid = jnp.asarray(grid)
+        if grid.ndim == 1:
+            return grid, None
+
+        if grid.ndim != 2:
+            raise ValueError(f"{name} must be a 1D axis or 2D mesh grid")
+        if grid.shape != expected_shape:
+            raise ValueError(f"2D {name} must have the same shape as p_grid")
+
+        if bool(jnp.all(grid == grid[0:1, :])):
+            return grid[0, :], 1
+        if bool(jnp.all(grid == grid[:, 0:1])):
+            return grid[:, 0], 0
+
+        raise ValueError(f"2D {name} must be a mesh grid with one varying axis")
+
     def __init__(self, **kwargs):
         self.temperature_field_type = kwargs.get("temperature_field_type", "isothermal")
         self.T = kwargs.get("T")
-        self.rho_grid = jnp.asarray(kwargs.get("rho_grid"))
         self.p_grid = jnp.asarray(kwargs.get("p_grid"))
-        self.T_grid = kwargs.get("T_grid")
         self.dpdT_grid = kwargs.get("dpdT_grid")
 
-        if self.rho_grid.ndim != 1:
-            raise ValueError("rho_grid must be a 1D array")
         if self.p_grid.ndim not in (1, 2):
             raise ValueError("p_grid must be 1D or 2D")
+
+        self.rho_grid, rho_axis_dim = self._axis_from_grid(
+            kwargs.get("rho_grid"),
+            self.p_grid.shape,
+            "rho_grid",
+        )
+        self.T_grid, t_axis_dim = self._axis_from_grid(
+            kwargs.get("T_grid"),
+            self.p_grid.shape,
+            "T_grid",
+        )
+        if self.rho_grid is None:
+            raise ValueError("rho_grid must be provided")
+
+        if self.p_grid.ndim == 1 and rho_axis_dim is not None:
+            raise ValueError("2D rho_grid can only be used when p_grid is 2D")
+
+        if self.p_grid.ndim == 2:
+            if rho_axis_dim == 0 and t_axis_dim == 1:
+                self.p_grid = self.p_grid.T
+                if self.dpdT_grid is not None:
+                    self.dpdT_grid = jnp.asarray(self.dpdT_grid).T
+            elif rho_axis_dim in (None, 1) and t_axis_dim in (None, 0):
+                pass
+            else:
+                raise ValueError("2D grids must orient p_grid as (T, rho) or provide matching mesh grids")
 
         sort_idx = jnp.argsort(self.rho_grid)
         self.rho_grid = self.rho_grid[sort_idx]

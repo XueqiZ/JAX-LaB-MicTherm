@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 from jax import config
 import numpy as np
+from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(PROJECT_ROOT) not in sys.path:
@@ -80,6 +81,13 @@ class Droplet2D(MultiphaseMRTTvar):
 
 
 if __name__ == "__main__":
+    # set debugging: 1 -> load/save temp grids to speed up debugging, 0 -> full recompute
+    debugging = 1
+    # create a top-level 'temp' folder in the repository root and use it for temporary files
+    repo_root = Path(__file__).resolve().parents[3]
+    temp_dir = repo_root / "temp"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    temp_file = temp_dir / "temp_mictherm_grids.npz"
     # calculate critical point properties using MicTherm API
     mictherm_names, mictherm_units, mictherm_values = run_mictherm_func(
         mode="criticalpoint",
@@ -116,27 +124,39 @@ if __name__ == "__main__":
     rho_g = mictherm_rho_g / factorRho  # scale back by factorRho
 
     # Create meshgrid to combine rho and T dimensions
-
     rho_step = 10
     T_step = 10
     mictherm_T_grid = np.linspace(mictherm_T * 0.9, mictherm_T * 1.1, T_step)
-    mictherm_rho_grid = np.linspace(mictherm_rho_g * 0.7, mictherm_rho_l * 1.3, rho_step) 
-    rho_grid, T_grid = np.meshgrid(mictherm_rho_grid, mictherm_T_grid)
-    T_array = T_grid.flatten()
-    rho_array = rho_grid.flatten()
+    mictherm_rho_grid = np.linspace(mictherm_rho_g * 0.7, mictherm_rho_l * 1.3, rho_step)
+
+    if debugging and temp_file.exists():
+        # load precomputed grids
+        data = np.load(temp_file)
+        T_grid = data["T_grid"]
+        rho_grid = data["rho_grid"]
+        p_grid = data["p_grid"]
+    else:
+        rho_grid_mesh, T_grid_mesh = np.meshgrid(mictherm_rho_grid, mictherm_T_grid)
+        T_array = T_grid_mesh.flatten()
+        rho_array = rho_grid_mesh.flatten()
+
+        # Generate array and calculate mictherm_grid
+        mictherm_names, mictherm_units, mictherm_values, InputT, Inputp, Inputrho, Inputx = mictherm_grid(
+            mode="userproperties",
+            T=T_array,
+            rho=rho_array,
+            p=None,
+            x=np.ones_like(T_array),
+            print_output=False,
+        )
+        T_grid = InputT.reshape(mictherm_T_grid.shape[0], mictherm_rho_grid.shape[0]) / factorTc  # scale back by factorTc
+        rho_grid = Inputrho.reshape(mictherm_T_grid.shape[0], mictherm_rho_grid.shape[0]) / factorRho  # scale back by factorRho
+        p_grid = mictherm_values[:, 1].reshape(mictherm_T_grid.shape[0], mictherm_rho_grid.shape[0]) / factorPc  # scale back by factorPc
+
+        if debugging:
+            np.savez(temp_file, T_grid=T_grid, rho_grid=rho_grid, p_grid=p_grid)
+
     
-    # Generate array and calculate mictherm_grid
-    mictherm_names, mictherm_units, mictherm_values, InputT, Inputp, Inputrho, Inputx = mictherm_grid(
-        mode="userproperties",
-        T=T_array,
-        rho=rho_array,
-        p=None,
-        x=np.ones_like(T_array),
-        print_output=False,
-    )
-    T_grid = InputT.reshape(mictherm_T_grid.shape[0], mictherm_rho_grid.shape[0]) /factorTc  # scale back by factorTc
-    rho_grid = Inputrho.reshape(mictherm_T_grid.shape[0], mictherm_rho_grid.shape[0]) / factorRho  # scale back by factorRho
-    p_grid = mictherm_values[:, 1].reshape(mictherm_T_grid.shape[0], mictherm_rho_grid.shape[0]) / factorPc  # scale back by factorPc
     
 
 
