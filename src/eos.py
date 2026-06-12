@@ -235,6 +235,15 @@ class MicTherm(EOS):
 
         raise ValueError(f"2D {name} must be a mesh grid with one varying axis")
 
+    @staticmethod
+    def _uniform_spacing(axis):
+        if axis.shape[0] < 2:
+            return False, None
+
+        spacing = axis[1] - axis[0]
+        is_uniform = bool(jnp.allclose(jnp.diff(axis), spacing))
+        return is_uniform, spacing
+
     def __init__(self, **kwargs):
         self.temperature_field_type = kwargs.get("temperature_field_type", "isothermal")
         self.T = kwargs.get("T")
@@ -278,19 +287,28 @@ class MicTherm(EOS):
                 raise ValueError("1D p_grid must have the same length as rho_grid")
             self.p_grid = self.p_grid[sort_idx]
             self.T_grid = None
+            self._T_grid_uniform = False
+            self._T_grid_spacing = None
         else:
             if self.p_grid.shape[1] != self.rho_grid.shape[0]:
                 raise ValueError("2D p_grid must have shape (len(T_grid), len(rho_grid))")
             if self.T_grid is None:
                 raise ValueError("T_grid must be provided when p_grid is 2D")
+            if self.rho_grid.shape[0] < 2:
+                raise ValueError("2D interpolation requires at least two rho_grid points")
 
             self.T_grid = jnp.asarray(self.T_grid)
             if self.T_grid.ndim != 1 or self.T_grid.shape[0] != self.p_grid.shape[0]:
                 raise ValueError("T_grid must be 1D with length p_grid.shape[0]")
+            if self.T_grid.shape[0] < 2:
+                raise ValueError("2D interpolation requires at least two T_grid points")
 
             t_sort_idx = jnp.argsort(self.T_grid)
             self.T_grid = self.T_grid[t_sort_idx]
             self.p_grid = self.p_grid[t_sort_idx, :][:, sort_idx]
+            self._T_grid_uniform, self._T_grid_spacing = self._uniform_spacing(self.T_grid)
+
+        self._rho_grid_uniform, self._rho_grid_spacing = self._uniform_spacing(self.rho_grid)
 
         if self.dpdT_grid is not None:
             self.dpdT_grid = jnp.asarray(self.dpdT_grid)
@@ -306,11 +324,64 @@ class MicTherm(EOS):
             self.dpdT_grid = jnp.zeros_like(self.p_grid)
 
     def _interp_rho(self, table, rho):
+        if self._rho_grid_uniform:
+            return self._interp_rho_uniform(table, rho)
         return jnp.interp(rho, self.rho_grid, table)
 
+    def _interp_rho_uniform(self, table, rho):
+        rho = jnp.asarray(rho)
+        idx_float = (rho - self.rho_grid[0]) / self._rho_grid_spacing
+        rho_idx = jnp.floor(idx_float).astype(jnp.int32)
+        rho_idx = jnp.clip(rho_idx, 0, self.rho_grid.shape[0] - 2)
+
+        rho0 = self.rho_grid[0] + rho_idx * self._rho_grid_spacing
+        rho_weight = (rho - rho0) / self._rho_grid_spacing
+
+        p0 = table[rho_idx]
+        p1 = table[rho_idx + 1]
+        return p0 + rho_weight * (p1 - p0)
+
     def _interp_rho_T(self, table, rho, T):
-        values_at_T = jax.vmap(lambda table_row: jnp.interp(rho, self.rho_grid, table_row))(table)
-        return jnp.interp(T, self.T_grid, values_at_T)
+        rho = jnp.asarray(rho)
+        T = jnp.asarray(T)
+        rho, T = jnp.broadcast_arrays(rho, T)
+
+        if self._rho_grid_uniform and self._T_grid_uniform:
+            rho_idx_float = (rho - self.rho_grid[0]) / self._rho_grid_spacing
+            T_idx_float = (T - self.T_grid[0]) / self._T_grid_spacing
+            rho_idx = jnp.floor(rho_idx_float).astype(jnp.int32)
+            T_idx = jnp.floor(T_idx_float).astype(jnp.int32)
+        else:
+            rho_idx = jnp.searchsorted(self.rho_grid, rho, side="right") - 1
+            T_idx = jnp.searchsorted(self.T_grid, T, side="right") - 1
+
+        rho_idx = jnp.clip(rho_idx, 0, self.rho_grid.shape[0] - 2)
+        T_idx = jnp.clip(T_idx, 0, self.T_grid.shape[0] - 2)
+
+        if self._rho_grid_uniform:
+            rho0 = self.rho_grid[0] + rho_idx * self._rho_grid_spacing
+            rho_weight = (rho - rho0) / self._rho_grid_spacing
+        else:
+            rho0 = self.rho_grid[rho_idx]
+            rho1 = self.rho_grid[rho_idx + 1]
+            rho_weight = (rho - rho0) / (rho1 - rho0)
+
+        if self._T_grid_uniform:
+            T0 = self.T_grid[0] + T_idx * self._T_grid_spacing
+            T_weight = (T - T0) / self._T_grid_spacing
+        else:
+            T0 = self.T_grid[T_idx]
+            T1 = self.T_grid[T_idx + 1]
+            T_weight = (T - T0) / (T1 - T0)
+
+        p00 = table[T_idx, rho_idx]
+        p10 = table[T_idx, rho_idx + 1]
+        p01 = table[T_idx + 1, rho_idx]
+        p11 = table[T_idx + 1, rho_idx + 1]
+
+        p0 = p00 + rho_weight * (p10 - p00)
+        p1 = p01 + rho_weight * (p11 - p01)
+        return p0 + T_weight * (p1 - p0)
 
     def _lookup(self, table, rho, T):
         if self.T_grid is None:
