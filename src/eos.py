@@ -193,25 +193,66 @@ class originalVdW(EOS):
 
 class MicTherm(EOS):
     """
-    Define multiphase model using the VanderWaals EOS.
+    Define a tabulated multiphase EOS model with lookup/interpolation.
 
     Parameters
     ----------
-    a: list
-    b: list
-    R: list
-    T: float or jax.numpy.ndarray
+    T : float or jax.numpy.ndarray
+        Temperature used for isothermal lookup (`EOS`) when `T_grid` is not
+        provided, or as runtime temperature input in thermal mode.
+    p_grid : jax.numpy.ndarray
+        Pressure table values. Supports:
 
-    Reference
-    ---------
-    1. Reprint of: The Equation of State for Gases and Liquids. The Journal of Supercritical Fluids,
-    100th year Anniversary of van der Waals' Nobel Lecture, 55, no. 2 (2010): 403–14. https://doi.org/10.1016/j.supflu.2010.11.001.
+        - 1D shape `(Nrho,)`: pressure as a function of `rho_grid` only.
+        - 2D shape `(NT, Nrho)`: pressure as a function of `(T_grid, rho_grid)`.
+    rho_grid : jax.numpy.ndarray
+        Density coordinates for the pressure table. Accepts:
+
+        - 1D axis `(Nrho,)`, or
+        - 2D mesh grid matching `p_grid` shape.
+    T_grid : jax.numpy.ndarray, optional
+        Temperature coordinates for 2D table mode. Accepts:
+
+        - 1D axis `(NT,)`, or
+        - 2D mesh grid matching `p_grid` shape.
+    dpdT_grid : jax.numpy.ndarray, optional
+        Precomputed \(\partial p / \partial T\) table with same shape as `p_grid`.
+        If omitted in 2D mode, it is computed from `p_grid` using
+        `jnp.gradient(..., axis=0)`.
 
     Notes
     -----
+        Testcase/table initialization behavior:
 
-    EOS is given by:
-        p = (rho*R*T)/(1 - b*rho) - a*rho^2
+        1. Input validation
+             - `p_grid` must be 1D or 2D.
+             - `rho_grid` is mandatory.
+             - `T_grid` is mandatory only for 2D `p_grid`.
+        2. 1D vs 2D grid handling
+             - 1D mode (`p_grid.ndim == 1`): interpolates only along `rho_grid`.
+             - 2D mode (`p_grid.ndim == 2`): uses bilinear interpolation in
+                 `(T, rho)` on a table shaped `(len(T_grid), len(rho_grid))`.
+             - 2D mesh-style `rho_grid` / `T_grid` are accepted and converted to
+                 1D axes when they represent valid mesh grids.
+        3. Sorting and orientation
+             - `rho_grid` and `T_grid` are sorted ascending.
+             - `p_grid`/`dpdT_grid` are reordered consistently.
+             - If mesh axes indicate transposed orientation, `p_grid` is transposed
+                 to standard `(T, rho)` layout.
+        4. Uniform-grid optimization
+             - If axis spacing is uniform, index-based interpolation is used for
+                 faster evaluation.
+             - Otherwise, non-uniform interpolation is used (`jnp.interp` for 1D,
+                 searchsorted + bilinear weights for 2D).
+
+        Runtime behavior during simulation:
+
+        - `EOS(rho_tree)`:
+            pressure lookup at model temperature `self.T`.
+        - `EOS_thermal(rho_tree, T)`:
+            pressure lookup at runtime temperature `T`.
+        - `drho_dT(rho_tree, T)`:
+            lookup of `dpdT_grid` at `(rho, T)`.
     """
 
     @staticmethod
@@ -243,7 +284,8 @@ class MicTherm(EOS):
         spacing = axis[1] - axis[0]
         is_uniform = bool(jnp.allclose(jnp.diff(axis), spacing))
         return is_uniform, spacing
-
+    # initialization step bevore the simulation starts, where the EOS object is created and the grids are processed and stored for later use during the simulation. The `__init__` method handles
+    #  all the necessary checks and preparations to ensure that the EOS can be evaluated efficiently during the simulation run.
     def __init__(self, **kwargs):
         self.temperature_field_type = kwargs.get("temperature_field_type", "isothermal")
         self.T = kwargs.get("T")
@@ -323,10 +365,19 @@ class MicTherm(EOS):
         else:
             self.dpdT_grid = jnp.zeros_like(self.p_grid)
 
+    # three interpolation methods (`_interp_rho`, `_interp_rho_uniform`, and `_interp_rho_T`) that handle the actual interpolation logic for looking up 
+    # pressure values based on the input density and temperature. The `_lookup` method serves as a dispatcher to call the appropriate interpolation method 
+    # based on whether a temperature grid is present. 
     def _interp_rho(self, table, rho):
         if self._rho_grid_uniform:
             return self._interp_rho_uniform(table, rho)
         return jnp.interp(rho, self.rho_grid, table)
+
+    # Explanation:
+    # _interp_rho/_interp_rho_uniform: 1-D interpolation in density (rho) for a
+    # table defined over self.rho_grid. If the density grid is uniform we use
+    # an index+weight approach for efficiency (_interp_rho_uniform), otherwise
+    # we fall back to jnp.interp.
 
     def _interp_rho_uniform(self, table, rho):
         rho = jnp.asarray(rho)
@@ -340,11 +391,28 @@ class MicTherm(EOS):
         p0 = table[rho_idx]
         p1 = table[rho_idx + 1]
         return p0 + rho_weight * (p1 - p0)
-
+    
     def _interp_rho_T(self, table, rho, T):
         rho = jnp.asarray(rho)
         T = jnp.asarray(T)
         rho, T = jnp.broadcast_arrays(rho, T)
+
+        # Explanation:
+        # This function performs bilinear interpolation on a 2-D table
+        # organized as table[T_index, rho_index]. Steps:
+        # 1) Convert rho and T to indices (floor) into the grid. If grids are
+        #    uniform we compute fractional indices directly, otherwise we use
+        #    searchsorted to find the bracketing index.
+        # 2) Clip indices to valid ranges so we always have a lower and upper
+        #    neighbor for both dimensions.
+        # 3) Compute interpolation weights for rho and T. For uniform grids
+        #    weights are computed from the start + spacing; otherwise use the
+        #    neighboring grid values.
+        # 4) Fetch the four corner values p00, p10, p01, p11 from the table:
+        #      p00 = f(T0, rho0), p10 = f(T0, rho1),
+        #      p01 = f(T1, rho0), p11 = f(T1, rho1)
+        # 5) Linearly interpolate in rho between p00/p10 and p01/p11, then
+        #    interpolate the resulting values in T to obtain the final value.
 
         if self._rho_grid_uniform and self._T_grid_uniform:
             rho_idx_float = (rho - self.rho_grid[0]) / self._rho_grid_spacing

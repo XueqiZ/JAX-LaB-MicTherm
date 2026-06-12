@@ -1,6 +1,7 @@
 
 import os
-
+# ensure MATLAB Runtime paths are included in PATH for Windows
+# before running code, read the Mictherm API manual to installation instructions
 os.environ["PATH"] = (
     r"C:\Program Files\MATLAB\MATLAB Runtime\R2024a\runtime\win64;"
     r"C:\Program Files\MATLAB\MATLAB Runtime\R2024a\bin\win64;"
@@ -50,8 +51,9 @@ class MatlabDoubleConverter:
 
 
 class MicThermAPIClient:
+    # substance properties for API calls (can be overridden by user parameters
     DEFAULT_USER_PARAMETERS = {
-        # General settings
+        # General settings for VdW EOS from reference paper 
         "N_components": 1,
         "Substance_ID1": 0,
         "PotModel_1": "LJ.pm",
@@ -59,14 +61,14 @@ class MicThermAPIClient:
         "EOS": "vanderWaals",
         "Output": "no",
         "Debug": "no",
-        # Substance-specific parameters (R-1234yf)
+
         "chainlength_1": 1,
         "b_VDW_1": 0.0952,
         "a_VDW_1": 0.1837,
         "molar_mass_1": 114.04,
         "dT": 1.0,
     }
-
+    # method-specific parameters to be added on top of base_user_parameters
     def __init__(self, base_user_parameters=None, **user_parameter_kwargs):
         # (1) API initialisieren
         self.api = MicTherm.initialize()

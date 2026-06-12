@@ -1,9 +1,4 @@
 """Create an MP4 video from a folder of PNG frames.
-
-Examples:
-    python scripts/pngs_to_video.py
-    python scripts/pngs_to_video.py --input . --pattern "cavity2d_*.png" --fps 20
-    python scripts/pngs_to_video.py --input results/images --output cavity.mp4
 """
 
 from __future__ import annotations
