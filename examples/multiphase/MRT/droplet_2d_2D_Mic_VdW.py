@@ -82,7 +82,7 @@ class Droplet2D(MultiphaseMRTTvar):
 
 if __name__ == "__main__":
     # set debugging: 1 -> load/save temp grids to speed up debugging, 0 -> full recompute
-    debugging = 1
+    debugging = 0
     # create a top-level 'temp' folder in the repository root and use it for temporary files
     repo_root = Path(__file__).resolve().parents[3]
     temp_dir = repo_root / "temp"
@@ -259,4 +259,4 @@ if __name__ == "__main__":
 
     os.system("rm -rf output*/ *.vtk")
     sim = Droplet2D(**kwargs)
-    sim.run(60000)
+    sim.run(20000)

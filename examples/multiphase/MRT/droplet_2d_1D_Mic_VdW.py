@@ -112,14 +112,18 @@ if __name__ == "__main__":
     mictherm_T = T * factorTc  # scale T by factorTc to be consistent with critical point properties
     rho_l = mictherm_rho_l / factorRho  # scale back by factorRho
     rho_g = mictherm_rho_g / factorRho  # scale back by factorRho
-
+    rho_array = np.linspace(mictherm_rho_g*0.7, mictherm_rho_l*1.3, 100)
+    T_array = np.full_like(rho_array, mictherm_T)
+    
     mictherm_names, mictherm_units, mictherm_values, InputT, Inputp, Inputrho, Inputx= mictherm_grid(
         mode="userproperties",
-        step=100,
-        rho_range=[mictherm_rho_g * 0.7, mictherm_rho_l * 1.3],
-        T_range=mictherm_T,
-        x_range=1,
+        T=T_array,
+        rho=rho_array,
+        p=None,
+        x=np.ones_like(T_array),
+        print_output=False,
     )
+    
     p_grid = mictherm_values[:, 1]/factorPc 
     rho_grid = Inputrho/factorRho 
     # scale back by factorPc;
