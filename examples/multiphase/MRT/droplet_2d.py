@@ -12,7 +12,7 @@ import numpy as np
 
 from src.lattice import LatticeD2Q9
 from src.eos import VanderWaal
-from src.utils import save_fields_vtk
+from src.utils import *
 from src.multiphase import MultiphaseMRT
 
 # config.update("jax_default_matmul_precision", "float32")
@@ -66,6 +66,7 @@ class Droplet2D(MultiphaseMRT):
         pressure_difference = p[self.nx // 2, self.ny // 2, 0] - 0.25 * (p_north + p_south + p_west + p_east)
         print(f"Pressure difference: {pressure_difference}")
         save_fields_vtk(timestep, fields, "output", "data")
+        save_image(timestep, u)
 
 
 if __name__ == "__main__":
@@ -129,9 +130,9 @@ if __name__ == "__main__":
         "s_v": s_v,
         "kappa": [1.0],
         "precision": precision,
-        "io_rate": 10000,
+        "io_rate": 2000,
         "compute_MLUPS": False,
-        "print_info_rate": 10000,
+        "print_info_rate": 2000,
         "checkpoint_rate": -1,
         "checkpoint_dir": os.path.abspath("./checkpoints_"),
         "restore_checkpoint": False,
@@ -139,4 +140,4 @@ if __name__ == "__main__":
 
     os.system("rm -rf output*/ *.vtk")
     sim = Droplet2D(**kwargs)
-    sim.run(30000)
+    sim.run(50000)
