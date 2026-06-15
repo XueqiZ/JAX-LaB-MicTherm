@@ -125,6 +125,7 @@ if __name__ == "__main__":
     interface_thickness_target = 5
     k_rad = 0.025
     A_rad = 0.05
+    opt_runs = 50
     
     assert len(T_X_vals) == len(rho_l_vals) == len(rho_g_vals), \
         "Arrays must have same length!"
@@ -143,7 +144,7 @@ if __name__ == "__main__":
             A_val_ini,
             interface_thickness_target,
             k_rad, A_rad,
-            n_trials=0
+            n_trials=opt_runs
         )
 
         all_trials.extend(trials)
