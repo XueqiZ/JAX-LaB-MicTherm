@@ -75,6 +75,21 @@ class Droplet2D(MultiphaseMRTTvar):
         p_east = p[self.nx // 2 + offset, self.ny // 2, 0]
         pressure_difference = p[self.nx // 2, self.ny // 2, 0] - 0.25 * (p_north + p_south + p_west + p_east)
         print(f"Pressure difference: {pressure_difference}")
+
+        output_dir = "output"
+        os.makedirs(output_dir, exist_ok=True)
+        x_mid = self.nx // 2
+        y_positions = np.arange(self.ny)
+        pressure_profile = p[x_mid, :, 0]
+        pressure_profile_data = np.column_stack((y_positions, pressure_profile))
+        np.savetxt(
+            os.path.join(output_dir, f"pressure_profile_x_mid_{str(timestep).zfill(7)}.csv"),
+            pressure_profile_data,
+            delimiter=",",
+            header=f"y,pressure_at_x_{x_mid}",
+            comments="",
+        )
+
         save_fields_vtk(timestep, fields, "output", "data")
         save_image(timestep, u)
         
