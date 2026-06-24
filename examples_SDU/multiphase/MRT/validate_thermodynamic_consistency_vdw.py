@@ -1,5 +1,6 @@
 
 from __future__ import annotations
+import csv
 from pathlib import Path
 import pandas as pd
 
@@ -8,17 +9,22 @@ CSV_PATH = Path(__file__).with_name("Thermodynamic Consistency - VdW.csv")
 
 
 def read_thermodynamic_consistency(csv_path: Path = CSV_PATH) -> tuple[list[str], pd.DataFrame, float | None]:
-    with csv_path.open("r", encoding="utf-8") as file:
-        general_information = [item.strip() for item in file.readline().strip().split(",") if item.strip()]
+    first_row = pd.read_csv(csv_path, nrows=1, header=None, sep=";").iloc[0]
+    general_information = [str(item).strip() for item in first_row.dropna().tolist() if str(item).strip()]
 
-    df = pd.read_csv(csv_path, skiprows=[0], header=0)
+    df = pd.read_csv(csv_path, skiprows=1, header=0, sep=";")
     df = df.dropna(how="all")
 
     rms_error = None
-    rms_rows = df[df.eq("RMS Error").any(axis=1)]
+    rms_rows = df[df.astype(str).eq("RMS Error").any(axis=1)]
     if not rms_rows.empty:
         rms_values = rms_rows.iloc[0].dropna().to_list()
-        rms_error = float(rms_values[-1])
+        for value in reversed(rms_values):
+            try:
+                rms_error = float(value)
+                break
+            except (TypeError, ValueError):
+                continue
         df = df.drop(index=rms_rows.index)
 
     for column in df.columns:

@@ -1,0 +1,283 @@
+"""
+Single component 2D droplet example where liquid droplet is suspended in its vapor. The density of each region is computed using Maxwell's Construction. The density profile
+is initialized with smooth profile with specified interface width. Boundary conditions are periodic everywhere. Useful for tuning the various coefficients.
+
+The collision matrix is based on:
+1. McCracken, M. E. & Abraham, J. Multiple-relaxation-time lattice-Boltzmann model for multiphase flow. Phys. Rev. E 71, 036701 (2005).
+"""
+
+import os
+import sys
+from pathlib import Path
+from jax import config
+import numpy as np
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from run_mictherm import run_mictherm_func, mictherm_grid
+from src.lattice import LatticeD2Q9
+from src.eos import MicTherm
+from src.utils import *
+from src.multiphase import MultiphaseMRTTvar
+from mpl_toolkits.mplot3d import Axes3D
+
+# config.update("jax_default_matmul_precision", "float32")
+
+
+class Droplet2D(MultiphaseMRTTvar):
+    def initialize_macroscopic_fields(self):
+        x = np.linspace(0, self.nx - 1, self.nx, dtype=int)
+        y = np.linspace(0, self.ny - 1, self.ny, dtype=int)
+        x, y = np.meshgrid(x, y)
+
+        rho_tree = []
+
+        dist = np.sqrt((x - self.nx / 2) ** 2 + (y - self.ny / 2) ** 2)
+
+        rho = 0.5 * (rho_l + rho_g) - 0.5 * (rho_l - rho_g) * np.tanh(2 * (dist - r) / width)
+
+        rho = rho.reshape((self.nx, self.ny, 1))
+        rho = self.distributed_array_init((self.nx, self.ny, 1), self.precisionPolicy.compute_dtype, init_val=rho)
+        rho = self.precisionPolicy.cast_to_output(rho)
+        rho_tree.append(rho)
+
+        u = np.zeros((self.nx, self.ny, 2))
+        u = self.distributed_array_init((self.nx, self.ny, 2), self.precisionPolicy.compute_dtype, init_val=u)
+        u = self.precisionPolicy.cast_to_output(u)
+        u_tree = [u]
+        return rho_tree, u_tree
+
+    def output_data(self, **kwargs):
+        # 1:-1 to remove boundary voxels (not needed for visualization when using full-way bounce-back)
+        rho = np.array(kwargs["rho_tree"][0][0, ...])
+        p = np.array(kwargs["p"][0, ...])
+        u = np.array(kwargs["u_tree"][0][0, ...])
+        timestep = kwargs["timestep"]
+        T_field = np.array(self.T_field)
+        fields = {"p": p[..., 0], "rho": rho[..., 0], "T": T_field[..., 0], "ux": u[..., 0], "uy": u[..., 1]}
+        offset = 90
+        rho_north = rho[self.nx // 2, self.ny // 2 - offset, 0]
+        rho_south = rho[self.nx // 2, self.ny // 2 + offset, 0]
+        rho_west = rho[self.nx // 2 - offset, self.ny // 2, 0]
+        rho_east = rho[self.nx // 2 + offset, self.ny // 2, 0]
+        rho_g_pred = 0.25 * (rho_north + rho_south + rho_west + rho_east)
+        rho_l_pred = rho[self.nx // 2, self.ny // 2, 0]
+        print(f"%Error Min: {(rho_g_pred - rho_g) * 100 / rho_g} Max: {(rho_l_pred - rho_l) * 100 / rho_l}")
+        print(f"Density: Min: {rho_g_pred} Max: {rho_l_pred}")
+        print(f"Maxwell construction: Min: {rho_g} Max: {rho_l}")
+        print(f"Spurious currents: {np.max(np.sqrt(np.sum(u**2, axis=-1)))}")
+        p_north = p[self.nx // 2, self.ny // 2 - offset, 0]
+        p_south = p[self.nx // 2, self.ny // 2 + offset, 0]
+        p_west = p[self.nx // 2 - offset, self.ny // 2, 0]
+        p_east = p[self.nx // 2 + offset, self.ny // 2, 0]
+        pressure_difference = p[self.nx // 2, self.ny // 2, 0] - 0.25 * (p_north + p_south + p_west + p_east)
+        print(f"Pressure difference: {pressure_difference}")
+
+        output_dir = "output"
+        os.makedirs(output_dir, exist_ok=True)
+        x_mid = self.nx // 2
+        y_positions = np.arange(self.ny)
+        pressure_profile = p[x_mid, :, 0]
+        pressure_profile_data = np.column_stack((y_positions, pressure_profile))
+        np.savetxt(
+            os.path.join(output_dir, f"pressure_profile_x_mid_{str(timestep).zfill(7)}.csv"),
+            pressure_profile_data,
+            delimiter=",",
+            header=f"y,pressure_at_x_{x_mid}",
+            comments="",
+        )
+
+        save_fields_vtk(timestep, fields, "output", "data")
+        save_image(timestep, u)
+        
+
+
+if __name__ == "__main__":
+    # set debugging: 1 -> load/save temp grids to speed up debugging, 0 -> full recompute
+    debugging = 0
+    # create a top-level 'temp' folder in the repository root and use it for temporary files
+    repo_root = Path(__file__).resolve().parents[3]
+    temp_dir = repo_root / "temp"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    temp_file = temp_dir / "temp_mictherm_grids.npz"
+    # calculate critical point properties using MicTherm API
+    mictherm_names, mictherm_units, mictherm_values = run_mictherm_func(
+        mode="criticalpoint",
+        T=None,
+        rho=None,
+        p=None,
+        x=None,
+        t_iso=None,
+        init_mode="uninitialized",
+        print_output=False,
+    )
+
+    # reference: publication 
+    Tc = 4/7
+    rhoc = 7/2
+    pc = (9/49) / (27 * (2/21) ** 2)
+
+    T = 0.8 * Tc
+
+    factorTc = mictherm_values[0,0]/Tc
+    factorRho = mictherm_values[0,1]/rhoc
+    factorPc = mictherm_values[0,2]/pc
+
+    # calculate VLE properties using MicTherm API for Tiso
+    mictherm_names, mictherm_units, mictherm_values = run_mictherm_func(
+        mode="vle_iso",
+        t_iso=T*factorTc,  # scale Tiso by factorTc to be consistent with critical point properties
+        print_output=False,
+    )
+    mictherm_rho_l = mictherm_values[0, 1] 
+    mictherm_rho_g = mictherm_values[0, 2]
+    mictherm_T = T * factorTc  # scale T by factorTc to be consistent with critical point properties
+    rho_l = mictherm_rho_l / factorRho  # scale back by factorRho
+    rho_g = mictherm_rho_g / factorRho  # scale back by factorRho
+
+    # Create meshgrid to combine rho and T dimensions
+    rho_step = 10
+    T_step = 10
+    mictherm_T_grid = np.linspace(mictherm_T * 0.9, mictherm_T * 1.1, T_step)
+    mictherm_rho_grid = np.linspace(mictherm_rho_g * 0.7, mictherm_rho_l * 1.3, rho_step)
+
+    if debugging and temp_file.exists():
+        # load precomputed grids
+        data = np.load(temp_file)
+        T_grid = data["T_grid"]
+        rho_grid = data["rho_grid"]
+        p_grid = data["p_grid"]
+    else:
+        rho_grid_mesh, T_grid_mesh = np.meshgrid(mictherm_rho_grid, mictherm_T_grid)
+        T_array = T_grid_mesh.flatten()
+        rho_array = rho_grid_mesh.flatten()
+
+        # Generate array and calculate mictherm_grid
+        mictherm_names, mictherm_units, mictherm_values, InputT, Inputp, Inputrho, Inputx = mictherm_grid(
+            mode="userproperties",
+            T=T_array,
+            rho=rho_array,
+            p=None,
+            x=np.ones_like(T_array),
+            print_output=False,
+        )
+        T_grid = InputT.reshape(mictherm_T_grid.shape[0], mictherm_rho_grid.shape[0]) / factorTc  # scale back by factorTc
+        rho_grid = Inputrho.reshape(mictherm_T_grid.shape[0], mictherm_rho_grid.shape[0]) / factorRho  # scale back by factorRho
+        p_grid = mictherm_values[:, 1].reshape(mictherm_T_grid.shape[0], mictherm_rho_grid.shape[0]) / factorPc  # scale back by factorPc
+
+        if debugging:
+            np.savez(temp_file, T_grid=T_grid, rho_grid=rho_grid, p_grid=p_grid)
+
+    
+    
+
+
+    fig = plt.figure(figsize=(10, 7))
+    ax = fig.add_subplot(111, projection='3d')
+    
+    ax.plot_surface(rho_grid, T_grid, p_grid, cmap=cm.nipy_spectral, alpha=0.8)
+    ax.set_xlabel(r"$\rho$")
+    ax.set_ylabel(r"$T$")
+    ax.set_zlabel(r"$p$")
+    ax.set_title("MicTherm pressure grid (3D)")
+
+    plt.tight_layout()
+    plt.show()
+
+    # scale back by factorPc;
+    e = LatticeD2Q9().c.T
+    en = np.linalg.norm(e, axis=1)
+
+    M = np.zeros((9, 9))
+    M[0, :] = en**0
+    M[1, :] = -4 * en**0 + 3 * en**2
+    M[2, :] = 4 * en**0 - (21 / 2) * en**2 + (9 / 2) * en**4
+    M[3, :] = e[:, 0]
+    M[4, :] = (-5 * en**0 + 3 * en**2) * e[:, 0]
+    M[5, :] = e[:, 1]
+    M[6, :] = (-5 * en**0 + 3 * en**2) * e[:, 1]
+    M[7, :] = e[:, 0] ** 2 - e[:, 1] ** 2
+    M[8, :] = e[:, 0] * e[:, 1]
+
+    r = 30
+    nx = 200
+    ny = 200
+
+    width = 3
+
+    T_l = 0.9 * T
+    T_g = 1.1 * T
+    x = np.linspace(0, nx - 1, nx, dtype=int)
+    y = np.linspace(0, ny - 1, ny, dtype=int)
+    x, y = np.meshgrid(x, y)
+    # Vertical temperature profile: bottom starts at T_l, rises to T_g around grid 60,
+    # then falls back to T_l at the top edge.
+    y_from_bottom = np.arange(ny, dtype=float)
+    peak_y = 60.0
+    T_profile = np.where(
+        y_from_bottom <= peak_y,
+        T_l,
+        T_l + (T_g - T_l) * ((y_from_bottom - peak_y) / (ny - 1 - peak_y)),
+    )
+    T_field = np.tile(T_profile, (nx, 1))
+    T_field = T_field.reshape((nx, ny, 1))
+
+    # T_field = 0.5 * (T_l + T_g) - 0.5 * (T_l - T_g) * np.tanh(2 * (dist - r) / width)
+    # T_field = T_field.reshape((nx, ny, 1))
+
+    a = 9 / 49
+    b = 2 / 21
+    R = 1.0
+
+
+    s_rho = [0.0]
+    s_e = [1.2]
+    s_eta = [1.0]
+    s_j = [0.0]
+    s_q = [1.0]
+    s_v = [1.0]
+
+    kwargs = {
+        "rho_grid": rho_grid,
+        "p_grid": p_grid,
+        "T_grid": T_grid,
+        "temperature_field_type": "thermal",
+    }
+    eos = MicTherm(**kwargs)
+
+    precision = "f32/f32"
+    kwargs = {
+        "n_components": 1,
+        "lattice": LatticeD2Q9(precision),
+        "nx": nx,
+        "ny": ny,
+        "nz": 0,
+        "g_kkprime": -1.0 * np.ones((1, 1)),
+        "EOS": eos,
+        "T_field": T_field,
+        "body_force": [0.0, 0.0],
+        "k": [0.16],
+        "A": -0.032 * np.ones((1, 1)),
+        "M": [M],
+        "s_rho": s_rho,
+        "s_e": s_e,
+        "s_eta": s_eta,
+        "s_j": s_j,
+        "s_q": s_q,
+        "s_v": s_v,
+        "kappa": [1.0],
+        "precision": precision,
+        "io_rate": 20,
+        "compute_MLUPS": False,
+        "print_info_rate": 20,
+        "checkpoint_rate": -1,
+        "checkpoint_dir": os.path.abspath("./checkpoints_"),
+        "restore_checkpoint": False,
+    }
+
+    os.system("rm -rf output*/ *.vtk")
+    sim = Droplet2D(**kwargs)
+    sim.run(3000)

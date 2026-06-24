@@ -93,6 +93,28 @@ class Droplet2D(MultiphaseMRT):
                     ]
                 )
 
+MIC_THERM_USER_PARAMETERS = {
+        # General
+        "units": "SI",
+        "Output": "no",
+        "Debug": "no",
+        "stability": "no",
+
+        # EOS / model settings
+        "N_components": 1,
+        "Substance_ID1": 0,
+        "PotModel_1": "LJ.pm",
+        "EOS": "PengRobinson",
+        "IDEAL": "IdealQM",
+
+        # Substance parameters
+        "a_VDW_1": 0.0408,
+        "b_VDW_1": 0.0952,
+        "omega_1": 1,
+        "molar_mass_1": 114.04,
+        "CAS_number_1": "29118-24-9",
+}
+
         
 
 
@@ -107,12 +129,13 @@ if __name__ == "__main__":
         t_iso=None,
         init_mode="uninitialized",
         print_output=False,
+        base_user_parameters=MIC_THERM_USER_PARAMETERS,
     )
 
     # reference: publication 
-    Tc = 4/7
-    rhoc = 7/2
-    pc = (9/49) / (27 * (2/21) ** 2)
+    Tc = 0.0729190372
+    rhoc = 2.6573041587
+    pc = 0.0555
 
     factorTc = mictherm_values[0,0]/Tc
     factorRho = mictherm_values[0,1]/rhoc
@@ -171,13 +194,13 @@ if __name__ == "__main__":
         writer = csv.writer(file)
         writer.writerow(validation_headers)
 
-    validation_run_steps = 5000
+    validation_run_steps = 50000
     precision = "f32/f32"
     for case_index, validation_case in pd_values.iterrows():
         Tr = float(validation_case["Tr"])
         k_value = float(validation_case["k"])
         A_value = float(validation_case["A"])
-        T = Tr * Tc
+        T = 0.6 * Tc
         current_Tr = Tr
         current_k = k_value
         current_A = A_value
@@ -188,7 +211,13 @@ if __name__ == "__main__":
         mictherm_names, mictherm_units, mictherm_values = run_mictherm_func(
             mode="vle_iso",
             t_iso=T * factorTc,  # scale Tiso by factorTc to be consistent with critical point properties
+            T=None,
+            rho=None,
+            p=None,
+            x=1,
+            init_mode="uninitialized",
             print_output=False,
+            base_user_parameters=MIC_THERM_USER_PARAMETERS,
         )
         mictherm_rho_l = mictherm_values[0, 1]
         mictherm_rho_g = mictherm_values[0, 2]
@@ -205,6 +234,7 @@ if __name__ == "__main__":
             p=None,
             x=np.ones_like(T_array),
             print_output=False,
+            base_user_parameters=MIC_THERM_USER_PARAMETERS,
         )
 
         p_grid = mictherm_values[:, 1] / factorPc

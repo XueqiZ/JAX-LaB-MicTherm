@@ -8,6 +8,7 @@ The collision matrix is based on:
 
 import os
 import sys
+import csv
 from pathlib import Path
 from jax import config
 import numpy as np
@@ -20,6 +21,7 @@ from src.lattice import LatticeD2Q9
 from src.eos import VanderWaal
 from src.utils import *
 from src.multiphase import MultiphaseMRT
+from validate_thermodynamic_consistency_vdw import read_thermodynamic_consistency
 
 # config.update("jax_default_matmul_precision", "float32")
 
@@ -71,8 +73,24 @@ class Droplet2D(MultiphaseMRT):
         p_east = p[self.nx // 2 + offset, self.ny // 2, 0]
         pressure_difference = p[self.nx // 2, self.ny // 2, 0] - 0.25 * (p_north + p_south + p_west + p_east)
         print(f"Pressure difference: {pressure_difference}")
-        save_fields_vtk(timestep, fields, "output", "data")
+        save_fields_vtk(timestep, fields, output_dir, "data")
         save_image(timestep, u)
+
+        if timestep == validation_run_steps:
+            with open(validation_results_path, "a", newline="", encoding="utf-8") as file:
+                writer = csv.writer(file)
+                writer.writerow(
+                    [
+                        current_Tr,
+                        current_k,
+                        current_A,
+                        float(np.max(np.sqrt(np.sum(u**2, axis=-1)))),
+                        float(rho_g),
+                        float(rho_g_pred),
+                        float(rho_l),
+                        float(rho_l_pred),
+                    ]
+                )
 
 
 if __name__ == "__main__":
@@ -100,10 +118,7 @@ if __name__ == "__main__":
     b = 2 / 21
     R = 1.0
 
-    rho_l = 8.837838688
-    rho_g = 3.93E-02
     Tc = 0.5714285714
-    T = 0.45 * Tc
 
     s_rho = [0.0]
     s_e = [1.2]
@@ -112,38 +127,79 @@ if __name__ == "__main__":
     s_q = [1.0]
     s_v = [1.0]
 
-    kwargs = {"a": [a], "b": [b], "R": [R], "T": T}
-    eos = VanderWaal(**kwargs)
+    general_information, pd_values, rms_error = read_thermodynamic_consistency()
+    print(f"Loaded {len(pd_values)} validation cases from Thermodynamic Consistency - VdW.csv")
+    print(f"Reference RMS Error from CSV: {rms_error}")
 
+    validation_output_root = os.path.abspath("output_kAopt")
+    os.makedirs(validation_output_root, exist_ok=True)
+    validation_results_path = os.path.join(validation_output_root, "validation_results.csv")
+    validation_headers = [
+        "Tr",
+        "k",
+        "A",
+        "Spurious Currents (Max)",
+        "rho_g",
+        "rho_g_pred",
+        "rho_l",
+        "rho_l_pred",
+    ]
+    with open(validation_results_path, "w", newline="", encoding="utf-8") as file:
+        writer = csv.writer(file)
+        writer.writerow(validation_headers)
+
+    validation_run_steps = 50000
     precision = "f32/f32"
-    kwargs = {
-        "n_components": 1,
-        "lattice": LatticeD2Q9(precision),
-        "nx": nx,
-        "ny": ny,
-        "nz": 0,
-        "g_kkprime": -1.0 * np.ones((1, 1)),
-        "EOS": eos,
-        "body_force": [0.0, 0.0],
-        "k": [0.01],
-        "A": -0.25 * np.ones((1, 1)),
-        "M": [M],
-        "s_rho": s_rho,
-        "s_e": s_e,
-        "s_eta": s_eta,
-        "s_j": s_j,
-        "s_q": s_q,
-        "s_v": s_v,
-        "kappa": [1.0],
-        "precision": precision,
-        "io_rate": 2000,
-        "compute_MLUPS": False,
-        "print_info_rate": 2000,
-        "checkpoint_rate": -1,
-        "checkpoint_dir": os.path.abspath("./checkpoints_"),
-        "restore_checkpoint": False,
-    }
+    for case_index, validation_case in pd_values.iterrows():
+        Tr = float(validation_case["Tr"])
+        k_value = float(validation_case["k"])
+        A_value = float(validation_case["A"])
+        rho_g = float(validation_case["rho_g (Maxwell)"])
+        rho_l = float(validation_case["rho_l (Maxwell)"])
+        T = Tr * Tc
+        current_Tr = Tr
+        current_k = k_value
+        current_A = A_value
 
-    os.system("rm -rf output*/ *.vtk")
-    sim = Droplet2D(**kwargs)
-    sim.run(50000)
+        print(
+            f"\nStarting validation case {case_index}: "
+            f"Tr={Tr}, k={k_value}, A={A_value}, rho_g={rho_g}, rho_l={rho_l}"
+        )
+
+        kwargs = {"a": [a], "b": [b], "R": [R], "T": T}
+        eos = VanderWaal(**kwargs)
+
+        case_name = f"Tr_{Tr:.3f}".replace(".", "_")
+        output_dir = os.path.abspath(os.path.join(validation_output_root, case_name))
+        os.makedirs(output_dir, exist_ok=True)
+
+        kwargs = {
+            "n_components": 1,
+            "lattice": LatticeD2Q9(precision),
+            "nx": nx,
+            "ny": ny,
+            "nz": 0,
+            "g_kkprime": -1.0 * np.ones((1, 1)),
+            "EOS": eos,
+            "body_force": [0.0, 0.0],
+            "k": [k_value],
+            "A": A_value * np.ones((1, 1)),
+            "M": [M],
+            "s_rho": s_rho,
+            "s_e": s_e,
+            "s_eta": s_eta,
+            "s_j": s_j,
+            "s_q": s_q,
+            "s_v": s_v,
+            "kappa": [1.0],
+            "precision": precision,
+            "io_rate": 2000,
+            "compute_MLUPS": False,
+            "print_info_rate": 2000,
+            "checkpoint_rate": -1,
+            "checkpoint_dir": os.path.abspath(os.path.join("checkpoints_kAopt", case_name)),
+            "restore_checkpoint": False,
+        }
+
+        sim = Droplet2D(**kwargs)
+        sim.run(validation_run_steps)
