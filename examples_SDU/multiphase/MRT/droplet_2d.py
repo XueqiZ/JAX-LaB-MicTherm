@@ -198,7 +198,7 @@ class Droplet2D(MultiphaseMRT):
         interface = self.interface_thickness(rho[:,:,0], self.nx // 2, self.ny // 2, rho_l, rho_g)
         self.last_int_thick = interface
         print(f"Pressure difference: {pressure_difference}, Radius: {radius}, surfTens: {np.abs(pressure_difference*radius)}, interThick: {interface}")
-        save_fields_vtk(timestep, fields, "output", "data")
+        #save_fields_vtk(timestep, fields, "output", "data")
 
 
 def run_simulation(T_X, k_val, A_val, rho_l_local, rho_g_local, steps=10000):

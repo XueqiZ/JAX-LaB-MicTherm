@@ -116,15 +116,8 @@ if __name__ == "__main__":
     rho_g_vals = np.array([1.79E-04,1.40E-03,5.91E-03,0.017188114,3.93E-02,0.076113825,0.131530159,0.209223388,0.31316375,0.480780526,0.620231522,0.838834226,1.119054876,1.490095732,2.026552244,3.5])
     k_vals = np.array([0.0083,0.009,0.009,0.01,0.01,0.01,0.01,0.01,0.01,0.01,0.02,0.02,0.02,0.02,0.04,0.05])
     A_vals = np.array([0.27022,0.27,0.26,0.26,0.25,0.24,0.23,0.22,0.2,0.18,0.26,0.24,0.22,0.185,0.18,0.2])
-    # T_X_vals = np.array([0.45])
-    # rho_l_vals = np.array([8.837838688])
-    # rho_g_vals = np.array([3.93E-02])
-    # k_vals = np.array([0.01])
-    # A_vals = np.array([0.26])
 
     interface_thickness_target = 5
-    k_rad = 0.025
-    A_rad = 0.05
     opt_runs = 50
     
     assert len(T_X_vals) == len(rho_l_vals) == len(rho_g_vals), \
@@ -136,6 +129,10 @@ if __name__ == "__main__":
     for T_X, rho_l_local, rho_g_local, k_val_ini, A_val_ini in zip(T_X_vals, rho_l_vals, rho_g_vals, k_vals, A_vals):
         print(f"\n=== Optimizing X = {T_X:.2f} ===")
 
+        k_rad = T_X*0.1
+        A_rad = T_X*0.2
+
+        all_TX = []
         best_params, trials = optimize_T(
             T_X,
             rho_l_local,
@@ -147,6 +144,7 @@ if __name__ == "__main__":
             n_trials=opt_runs
         )
 
+        all_TX.extend(trials)
         all_trials.extend(trials)
 
         best_results.append({
@@ -157,6 +155,8 @@ if __name__ == "__main__":
         })
 
         print(f"Best for X={T_X:.2f}: k={best_params['k']:.4f}, A={best_params['A']:.4f}")
+        df_TX = pd.DataFrame(all_TX)
+        df_TX.to_csv(f'optuna_all_{T_X}.csv', index=False)
 
     # ---------------------------------------
     # SAVE RESULTS

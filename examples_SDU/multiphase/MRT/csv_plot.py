@@ -4,10 +4,10 @@ import matplotlib.colors as colors
 import numpy as np
 
 # === Load CSV ===
-file_path = r"C:\Users\mlaut\GitRepos\JAX-LaB-MicTherm\optuna_all_trials.csv"  
+file_path = r"C:\Users\mlaut\GitRepos\JAX-LaB-MicTherm\examples_SDU\multiphase\MRT\results_total\optuna_all_0.65.csv"  
 df = pd.read_csv(file_path)
 # keep only files where T_X = ...
-df = df[df.iloc[:, 0] == 0.45]
+df = df[df.iloc[:, 0] == 0.65]
 
 # === Choose columns ===
 x_col = df.columns[2]
@@ -22,7 +22,14 @@ y_min = df.loc[idx_min, y_col]
 z_min = df.loc[idx_min, value_col]
 
 # === Pivot data into grid ===
-pivot_table = df.pivot(index=y_col, columns=x_col, values=value_col)
+
+pivot_table = df.pivot_table(
+    index=y_col,
+    columns=x_col,
+    values=value_col,
+    aggfunc="mean"   # or "min", "max", "first"
+)
+
 
 # === Convert to arrays ===
 X = pivot_table.columns.values
