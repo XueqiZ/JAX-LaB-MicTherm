@@ -230,7 +230,7 @@ def run_simulation(T_X, k_val, A_val, rho_l_local, rho_g_local, steps=10000):
         "s_j": s_j,
         "s_q": s_q,
         "s_v": s_v,
-        "kappa": [1.0],
+        "kappa": [0.0],
         "precision": precision,
         "io_rate": steps,
         "compute_MLUPS": False,
