@@ -15,10 +15,10 @@ for T_X, rho_l, rho_g in zip(T_X_vals,rho_l_vals,rho_g_vals):
 
     #k_pred = 0.3181*T_X-0.07127
     #A_pred = 0.08109*T_X+0.2338
-    k_pred = 0.143312649
-    A_pred = 0.372425308
+    k_pred = 0.16
+    A_pred = 0.1157
 
-    for kappa_val in np.array([0, 0.05, 0.5, 0.95, 1]):
+    for kappa_val in np.array([0]):
     #for kappa_val, A_pred in zip(np.array([0, 0.5, 1]), A_pred):
         try:
             rho, p = run_simulation(
@@ -28,7 +28,7 @@ for T_X, rho_l, rho_g in zip(T_X_vals,rho_l_vals,rho_g_vals):
                 A_pred,
                 rho_l,
                 rho_g,
-                steps=20000
+                steps=100000
             )
 
         except Exception as e:

@@ -41,7 +41,7 @@ def optimize_T(T_X, rho_l_local, rho_g_local, k_val_ini, A_val_ini, interface_th
 
     trial_log = []
 
-    study = optuna.create_study(direction="minimize", sampler=optuna.samplers.QMCSampler())
+    study = optuna.create_study(direction="minimize", sampler=optuna.samplers.TPESampler())
 
     best_k = k_val_ini
     best_A = A_val_ini
@@ -56,8 +56,8 @@ def optimize_T(T_X, rho_l_local, rho_g_local, k_val_ini, A_val_ini, interface_th
         #A_val = trial.suggest_float("A", max(A_val_ini - 0.25, 0.0), A_val_ini + 0.25)
         # = trial.suggest_float("k", max(k_center - k_rad, 0.005), k_center + k_rad)
         #A_val = trial.suggest_float("A", max(A_center - A_rad, 0.0), A_center + A_rad)
-        k_val = trial.suggest_float("k", 0.0, 0.4)
-        A_val = trial.suggest_float("A", 0.0, 1.0)
+        k_val = trial.suggest_float("k", 0.0, 0.3, step=0.01)
+        A_val = trial.suggest_float("A", 0.0, 0.5, step=0.01)
         try:
             rho, u, int_thick = run_simulation(
                 T_X,

@@ -64,7 +64,10 @@ class Droplet2D(MultiphaseMRT):
         y = np.linspace(0, self.ny - 1, self.ny, dtype=int)
         x, y = np.meshgrid(x, y)
 
-        rho_tree = []
+        rho_tree = []    
+        self.rho_l_sum = 0.0
+        self.rho_g_sum = 0.0
+        self.n_samples = 0
 
         dist = np.sqrt((x - self.nx / 2) ** 2 + (y - self.ny / 2) ** 2)
 
@@ -192,12 +195,17 @@ class Droplet2D(MultiphaseMRT):
         rho_west = rho[self.nx // 2 - offset, self.ny // 2, 0]
         rho_east = rho[self.nx // 2 + offset, self.ny // 2, 0]
         rho_g_pred = 0.25 * (rho_north + rho_south + rho_west + rho_east)
-        rho_l_pred = rho[self.nx // 2, self.ny // 2, 0]
+        rho_l_pred = np.average(rho[self.nx // 2 -1 :  self.nx // 2 +1, self.ny // 2 -1 : self.ny // 2 +1, 0])
+        self.rho_l_sum += rho_l_pred
+        self.rho_g_sum += rho_g_pred
+        self.n_samples += 1
+        rho_l_avg = self.rho_l_sum / self.n_samples
+        rho_g_avg = self.rho_g_sum / self.n_samples
+
         print(f"kappa: {kappa_}, k: {k_}, A: {A_}")
-        print(f"%Error Min: {(rho_g_pred - rho_g) * 100 / rho_g} Max: {(rho_l_pred - rho_l) * 100 / rho_l}")
-        print(f"Density: Min: {rho_g_pred} Max: {rho_l_pred}")
-        print(f"Maxwell construction: Min: {rho_g} Max: {rho_l}")
-        print(f"Spurious currents: {np.max(np.sqrt(np.sum(u**2, axis=-1)))}")
+        print(f"Density: gas: {rho_g_pred} vs. {rho_g}; liq: {rho_l_pred} vs. {rho_l}")
+        print(f"Density average: gas: {rho_g_avg} vs. {rho_g}; liq: {rho_l_avg} vs. {rho_l}")
+
         p_north = p[self.nx // 2, self.ny // 2 - offset, 0]
         p_south = p[self.nx // 2, self.ny // 2 + offset, 0]
         p_west = p[self.nx // 2 - offset, self.ny // 2, 0]
@@ -273,7 +281,7 @@ def run_simulation(T_X, kappa_val, k_val, A_val, rho_l_local, rho_g_local, steps
         "s_v": s_v,
         "kappa": [kappa_val],
         "precision": precision,
-        "io_rate": steps,
+        "io_rate": 1000,
         "compute_MLUPS": False,
         "print_info_rate": 10000,
         "checkpoint_rate": -1,
