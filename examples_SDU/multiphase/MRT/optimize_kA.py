@@ -88,6 +88,10 @@ def optimize_T(T_X, rho_l_local, rho_g_local, k_val_ini, A_val_ini, interface_th
             if np.isnan(val) or val > 1e3:
                 return 1e6
         
+        except KeyboardInterrupt:
+            print("KeyboardInterrupt inside objective")
+            raise
+
         except Exception as e:
             print(f"Instability for k={k_val}, A={A_val}: {e}")
             return 1e6  # penalize failed run
