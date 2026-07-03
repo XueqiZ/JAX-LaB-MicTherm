@@ -1,0 +1,4 @@
+No of GPUs (n),MLUPS,Speedup,Ideal,"(416*n x 416^2), BGK, Laplace Law"
+1,433,1,1,
+2,841,1.942263279,2,
+4,1633,3.771362587,4,

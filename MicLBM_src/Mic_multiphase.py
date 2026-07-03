@@ -592,6 +592,24 @@ class Multiphase(LBMBase):
         return self.eos.EOS(rho_tree)
 
     @partial(jit, static_argnums=(0,))
+    def compute_pressure_Tvar(self, rho_tree, T_field):
+        """
+        Compute pressure using a spatially varying temperature field.
+
+        Parameters
+        ----------
+        rho_tree (pytree of jax.numpy.ndarray): Density field.
+
+        T_field (jax.numpy.ndarray): Temperature field with the same spatial
+        dimensions as a density component.
+
+        Returns
+        -------
+        (pytree of jax.numpy.ndarray): Pressure field.
+        """
+        return self.eos.EOS_thermal(rho_tree, T_field)
+
+    @partial(jit, static_argnums=(0,))
     def compute_total_pressure(self, p_tree, rho_tree=None):
         """
         Compute the total combined pressure from all components.
@@ -1347,6 +1365,33 @@ class MultiphaseMRT(Multiphase):
             lambda fout: self.precisionPolicy.cast_to_output(fout),
             fout_tree,
         )
+
+
+class MultiphaseMRTTvar(MultiphaseMRT):
+    """
+    MRT multiphase solver variant for a prescribed spatial temperature field.
+
+    This class keeps the normal MRT flow solver unchanged, but computes pressure
+    through EOS_thermal(rho_tree, T_field). The temperature field is prescribed;
+    it is not evolved by this solver.
+    """
+
+    def __init__(self, **kwargs):
+        self.T_field = kwargs.pop("T_field", None)
+        if self.T_field is None:
+            raise ValueError("T_field must be provided for MultiphaseMRTTvar")
+        super().__init__(**kwargs)
+        self.T_field = jnp.asarray(self.T_field, dtype=self.precisionPolicy.compute_dtype)
+        self.T_field_downsampled = self.T_field
+        if self.downsamplingFactor > 1:
+            self.T_field_downsampled = downsample_field(self.T_field, self.downsamplingFactor)
+
+    @partial(jit, static_argnums=(0,))
+    def compute_pressure(self, rho_tree, psi_tree=None):
+        T_field = self.T_field
+        if rho_tree[0].shape != self.T_field.shape:
+            T_field = self.T_field_downsampled
+        return self.compute_pressure_Tvar(rho_tree, T_field)
 
 
 class MultiphaseCascade(Multiphase):

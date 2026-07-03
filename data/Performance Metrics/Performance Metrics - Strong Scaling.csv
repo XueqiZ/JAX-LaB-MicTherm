@@ -1,0 +1,4 @@
+No of GPUs,MLUPS,Speedup,Ideal,"320 x 320 x 320, BGK, Laplace Law"
+1,438,1,1,
+2,832,1.899543379,2,
+4,1580,3.607305936,4,
