@@ -201,7 +201,7 @@ class Droplet2D(MultiphaseMRT):
         #save_fields_vtk(timestep, fields, "output", "data")
 
 
-def run_simulation(T_X, k_val, A_val, rho_l_local, rho_g_local, steps=10000):
+def run_simulation(T_X, kappa, k_val, A_val, rho_l_local, rho_g_local, steps=10000):
     global rho_l, rho_g
     rho_l = rho_l_local
     rho_g = rho_g_local
@@ -230,7 +230,7 @@ def run_simulation(T_X, k_val, A_val, rho_l_local, rho_g_local, steps=10000):
         "s_j": s_j,
         "s_q": s_q,
         "s_v": s_v,
-        "kappa": [0.0],
+        "kappa": [kappa],
         "precision": precision,
         "io_rate": steps,
         "compute_MLUPS": False,

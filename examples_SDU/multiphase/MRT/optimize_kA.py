@@ -63,7 +63,7 @@ def already_evaluated(study, trial, k, A):
 # OPTIMIZATION PER TEMPERATURE
 # ---------------------------------------
 
-def optimize_T(T_X, rho_l_local, rho_g_local, k_val_ini, A_val_ini, interface_thickness_target, k_rad, A_rad, min_trials=10, max_trials=100, objective_target=5):
+def optimize_T(T_X, kappa, rho_l_local, rho_g_local, k_val_ini, A_val_ini, interface_thickness_target, k_rad, A_rad, min_trials=10, max_trials=100, objective_target=5):
 
     T = T_X * Tc
 
@@ -94,6 +94,7 @@ def optimize_T(T_X, rho_l_local, rho_g_local, k_val_ini, A_val_ini, interface_th
         try:
             rho, u, int_thick = run_simulation(
                 T_X,
+                kappa,
                 k_val,
                 A_val,
                 rho_l_local,
@@ -169,6 +170,7 @@ if __name__ == "__main__":
     rho_g_vals = np.array([0.838834226])
     k_vals = np.array([0.2])
     A_vals = np.array([0.5])
+    kappa = 0.0
 
     interface_thickness_target = 5
     
@@ -187,6 +189,7 @@ if __name__ == "__main__":
         all_TX = []
         best_params, trials = optimize_T(
             T_X,
+            kappa,
             rho_l_local,
             rho_g_local,
             k_val_ini,
@@ -210,7 +213,7 @@ if __name__ == "__main__":
 
         print(f"Best for X={T_X:.2f}: k={best_params['k']:.4f}, A={best_params['A']:.4f}")
         df_TX = pd.DataFrame(all_TX)
-        df_TX.to_csv(f'optuna_all_{T_X}.csv', index=False)
+        df_TX.to_csv(f'optuna_all_{T_X}_{kappa}.csv', index=False)
 
     # ---------------------------------------
     # SAVE RESULTS
