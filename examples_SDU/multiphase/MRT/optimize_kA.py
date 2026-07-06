@@ -32,6 +32,34 @@ def compute_objective(rho, u, int_thick, rho_l, rho_g, interface_thickness_targe
     return objective, err_l, err_g, err_int_th
 
 # ---------------------------------------
+# Identification of duplicate k,A screens
+# ---------------------------------------
+
+def already_evaluated(study, trial, k, A):
+
+    valid_states = (
+        optuna.trial.TrialState.COMPLETE,
+        optuna.trial.TrialState.RUNNING,
+    )
+
+    for t in study.get_trials(
+        deepcopy=False,
+        states=valid_states,
+    ):
+        
+        if t.number == trial.number:
+            continue
+
+        if (
+            t.params.get("k") == k and
+            t.params.get("A") == A
+        ):
+            return True
+
+    return False
+
+
+# ---------------------------------------
 # OPTIMIZATION PER TEMPERATURE
 # ---------------------------------------
 
@@ -43,21 +71,26 @@ def optimize_T(T_X, rho_l_local, rho_g_local, k_val_ini, A_val_ini, interface_th
 
     study = optuna.create_study(direction="minimize", sampler=optuna.samplers.TPESampler())
 
-    best_k = k_val_ini
-    best_A = A_val_ini
-    best_val = np.inf
-
     def objective_opt(trial):
-        nonlocal best_k, best_A, best_val
-        k_center = best_k
-        A_center = best_A
+     
+        try:
+            k_center = trial.study.best_params["k"]
+            A_center = trial.study.best_params["A"]
+        except (ValueError, KeyError):
+            k_center = k_val_ini
+            A_center = A_val_ini
 
         #k_val = trial.suggest_float("k", max(k_val_ini - 0.1, 0.005), k_val_ini * 5)
         #A_val = trial.suggest_float("A", max(A_val_ini - 0.25, 0.0), A_val_ini + 0.25)
         # = trial.suggest_float("k", max(k_center - k_rad, 0.005), k_center + k_rad)
         #A_val = trial.suggest_float("A", max(A_center - A_rad, 0.0), A_center + A_rad)
-        k_val = trial.suggest_float("k", 0.0, 0.3, step=0.01)
-        A_val = trial.suggest_float("A", 0.0, 0.5, step=0.01)
+        k_val = trial.suggest_float("k", 0.0, 0.3, step=0.001)
+        A_val = trial.suggest_float("A", 0.0, 0.5, step=0.001)
+
+        if already_evaluated(trial.study, trial, k_val, A_val):
+            print(f"Duplicate point detected: k={k_val}, A={A_val}")
+            raise optuna.TrialPruned()
+
         try:
             rho, u, int_thick = run_simulation(
                 T_X,
@@ -95,17 +128,20 @@ def optimize_T(T_X, rho_l_local, rho_g_local, k_val_ini, A_val_ini, interface_th
         except Exception as e:
             print(f"Instability for k={k_val}, A={A_val}: {e}")
             return 1e6  # penalize failed run
-        
-        if val < best_val:
-                best_val = val
-                best_k = k_val
-                best_A = A_val
 
         print(f"optimization k: {k_val}, k_b: {k_center}, A: {A_val}, A_b: {A_center}, obj: {val}")
         
         # ---- Early stopping criteria ----
-        if (trial.number + 1 >= min_trials and best_val < objective_target):
-            print(f"\nTarget reached after {trial.number + 1} trials (best objective = {best_val:.4f})")
+        try:
+            best_value = trial.study.best_value
+        except ValueError:
+            best_value = np.inf
+
+        if (trial.number + 1 >= min_trials and best_value < objective_target):
+            print(
+                f"\nTarget reached after {trial.number + 1} trials "
+                f"(best objective = {best_value:.4f})"
+            )
             trial.study.stop()
 
         return val
@@ -158,7 +194,7 @@ if __name__ == "__main__":
             interface_thickness_target,
             k_rad, A_rad,
             min_trials=10, 
-            max_trials=100,
+            max_trials=250,
             objective_target=1.0
         )
 
