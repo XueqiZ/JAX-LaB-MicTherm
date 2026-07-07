@@ -12,24 +12,24 @@ from .droplet_2d import *
 
 def compute_objective(rho, u, int_thick, rho_l, rho_g, interface_thickness_target):
 
-    offset = nx // 6
+    offset = (nx // 2) - 10
 
     rho_north = rho[nx // 2, ny // 2 - offset, 0]
     rho_south = rho[nx // 2, ny // 2 + offset, 0]
     rho_west = rho[nx // 2 - offset, ny // 2, 0]
     rho_east = rho[nx // 2 + offset, ny // 2, 0]
 
-    rho_g_pred = 0.25 * (rho_north + rho_south + rho_west + rho_east)
-    rho_l_pred = rho[nx // 2, ny // 2, 0]
+    rho_g_sim = 0.25 * (rho_north + rho_south + rho_west + rho_east)
+    rho_l_sim = rho[nx // 2, ny // 2, 0]
 
-    err_l = abs((rho_l_pred - rho_l) / rho_l)
-    err_g = abs((rho_g_pred - rho_g) / rho_g)
+    err_l = abs((rho_l_sim - rho_l) / rho_l)
+    err_g = abs((rho_g_sim - rho_g) / rho_g)
     err_int_th = abs((int_thick - interface_thickness_target) / interface_thickness_target)
+    err_int_th_penalty = 0 if abs(int_thick - interface_thickness_target) <= 2.5 else 1
 
     #objective = (err_l + err_g + err_int_th)*1/3*100
-    objective = (err_l + err_g)*1/2*100
-
-    return objective, err_l, err_g, err_int_th
+    objective = ((err_l + err_g)*0.5 + err_int_th_penalty) *100
+    return objective, rho_l_sim, rho_g_sim, err_l, err_g, err_int_th
 
 # ---------------------------------------
 # Identification of duplicate k,A screens
@@ -84,7 +84,7 @@ def optimize_T(T_X, kappa, rho_l_local, rho_g_local, k_val_ini, A_val_ini, inter
         #A_val = trial.suggest_float("A", max(A_val_ini - 0.25, 0.0), A_val_ini + 0.25)
         # = trial.suggest_float("k", max(k_center - k_rad, 0.005), k_center + k_rad)
         #A_val = trial.suggest_float("A", max(A_center - A_rad, 0.0), A_center + A_rad)
-        k_val = trial.suggest_float("k", 0.0, 0.3, step=0.001)
+        k_val = trial.suggest_float("k", 0.0, 0.5, step=0.001)
         A_val = trial.suggest_float("A", 0.0, 0.5, step=0.001)
 
         if already_evaluated(trial.study, trial, k_val, A_val):
@@ -92,7 +92,7 @@ def optimize_T(T_X, kappa, rho_l_local, rho_g_local, k_val_ini, A_val_ini, inter
             raise optuna.TrialPruned()
 
         try:
-            rho, u, int_thick = run_simulation(
+            rho, u, int_thick, radius, surfTens = run_simulation(
                 T_X,
                 kappa,
                 k_val,
@@ -102,7 +102,7 @@ def optimize_T(T_X, kappa, rho_l_local, rho_g_local, k_val_ini, A_val_ini, inter
                 steps=20000   # shorter during optimization
             )
 
-            val, err_l, err_g, err_int_th = compute_objective(rho, u, int_thick, rho_l_local, rho_g_local, interface_thickness_target)
+            obj, rho_l_sim, rho_g_sim, err_l, err_g, err_int_th = compute_objective(rho, u, int_thick, rho_l_local, rho_g_local, interface_thickness_target)
 
             # store every trial
             trial_log.append({
@@ -110,16 +110,22 @@ def optimize_T(T_X, kappa, rho_l_local, rho_g_local, k_val_ini, A_val_ini, inter
                 "T": T,
                 "k": k_val,
                 "A": A_val,
-                "rho_l": rho_l_local,
-                "rho_g": rho_g_local,
-                "objective": val,
+                "kappa": kappa,
+                "rho_l_EOS": rho_l_local,
+                "rho_g_EOS": rho_g_local,
+                "rho_l_EOS": rho_l_local,
+                "rho_g_EOS": rho_g_local,
+                "int_thick": int_thick,
+                "radius": radius,
+                "surfTens": surfTens,
+                "objective": obj,
                 "err_l": err_l,
                 "err_g": err_g,
                 "err_int_thickness": err_int_th
             })
 
             # handle unstable runs
-            if np.isnan(val) or val > 1e3:
+            if np.isnan(obj) or obj > 1e3:
                 return 1e6
         
         except KeyboardInterrupt:
@@ -130,7 +136,7 @@ def optimize_T(T_X, kappa, rho_l_local, rho_g_local, k_val_ini, A_val_ini, inter
             print(f"Instability for k={k_val}, A={A_val}: {e}")
             return 1e6  # penalize failed run
 
-        print(f"optimization k: {k_val}, k_b: {k_center}, A: {A_val}, A_b: {A_center}, obj: {val}")
+        print(f"optimization k: {k_val}, k_b: {k_center}, A: {A_val}, A_b: {A_center}, obj: {obj}")
         
         # ---- Early stopping criteria ----
         try:
@@ -145,7 +151,7 @@ def optimize_T(T_X, kappa, rho_l_local, rho_g_local, k_val_ini, A_val_ini, inter
             )
             trial.study.stop()
 
-        return val
+        return obj
 
     study.enqueue_trial({"k": k_val_ini, "A": A_val_ini})
     study.optimize(objective_opt, n_trials=max_trials, n_jobs=4, catch=(Exception,))
@@ -168,8 +174,8 @@ if __name__ == "__main__":
     T_X_vals = np.array([0.8])
     rho_l_vals = np.array([6.7644704])
     rho_g_vals = np.array([0.838834226])
-    k_vals = np.array([0.2])
-    A_vals = np.array([0.5])
+    k_vals = np.array([0.3])
+    A_vals = np.array([0.219])
     kappa = 0.0
 
     interface_thickness_target = 5
@@ -196,8 +202,8 @@ if __name__ == "__main__":
             A_val_ini,
             interface_thickness_target,
             k_rad, A_rad,
-            min_trials=10, 
-            max_trials=250,
+            min_trials=1, 
+            max_trials=1,
             objective_target=1.0
         )
 

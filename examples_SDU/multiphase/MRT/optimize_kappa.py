@@ -12,7 +12,7 @@ from .droplet_2d_sigma import *
 
 def compute_objective(rho, int_thick, rho_l, rho_g, gamma_local, gamma, interface_thickness_target):
 
-    offset = nx // 6
+    offset = (nx // 2) - 10
 
     rho_north = rho[nx // 2, ny // 2 - offset, 0]
     rho_south = rho[nx // 2, ny // 2 + offset, 0]
