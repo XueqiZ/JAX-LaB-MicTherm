@@ -18,13 +18,15 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from functools import partial
 from src.lattice import LatticeD2Q9
-from src.eos import VanderWaal
+
 from src.utils import save_fields_vtk
-from src.multiphase import MultiphaseMRT
+
 from src.boundary_conditions import BounceBack
 from jax import jit
 from jax.tree import map
 import jax.numpy as jnp
+from MicLBM_src.eos import VanderWaal
+from MicLBM_src.Mic_multiphase import MultiphaseMRT
 
 
 class Droplet2D(MultiphaseMRT):
@@ -64,10 +66,10 @@ class Droplet2D(MultiphaseMRT):
 
         return rho_tree, u_tree
     
-    @partial(jit, static_argnums=(0,))
-    def compute_potential(self, rho_tree):
-        U_tree = map(lambda rho: jnp.zeros_like(rho), rho_tree)
-        return rho_tree, U_tree
+    # @partial(jit, static_argnums=(0,))
+    # def compute_potential(self, rho_tree):
+    #     U_tree = map(lambda rho: jnp.zeros_like(rho), rho_tree)
+    #     return rho_tree, U_tree
 
     def output_data(self, **kwargs):
         # 1:-1 to remove boundary voxels (not needed for visualization when using full-way bounce-back)
@@ -98,16 +100,22 @@ class CapillaryFingering(MultiphaseMRT):
 
         rho_tree = []
 
+        interface_width = 2.0
+        x_profile = np.arange(self.nx, dtype=float)[:, None, None]
+        profile = 0.5 * (1.0 - np.tanh((x_profile - Lx) / interface_width))
+
+        rho_invading = ((1 - fraction) + (2 * fraction - 1) * profile) * rho_t
+        rho_invading = np.broadcast_to(rho_invading, (self.nx, self.ny, 1)).copy()
+        rho_displaced = rho_t - rho_invading
+
         # Invading fluid
-        rho = (1 - fraction) * rho_t * np.ones((self.nx, self.ny, 1))
-        rho[0:Lx, :, :] = fraction * rho_t
+        rho = rho_invading
         rho = self.distributed_array_init((self.nx, self.ny, 1), self.precisionPolicy.compute_dtype, init_val=rho)
         rho = self.precisionPolicy.cast_to_output(rho)
         rho_tree.append(rho)
 
         # Displaced fluid
-        rho = fraction * rho_t * np.ones((self.nx, self.ny, 1))
-        rho[0:Lx, :, :] = (1 - fraction) * rho_t
+        rho = rho_displaced
         rho = self.distributed_array_init((self.nx, self.ny, 1), self.precisionPolicy.compute_dtype, init_val=rho)
         rho = self.precisionPolicy.cast_to_output(rho)
         rho_tree.append(rho)
@@ -274,17 +282,19 @@ class CapillaryFingering(MultiphaseMRT):
 
 
 if __name__ == "__main__":
+    debugging = 0
+
     precision = "f32/f32"
 
     tau_2 = 1.9
     v_2 = (tau_2 - 0.5) / 3
 
-    visc_ratio = 10.0  # viscosity ratio
+    visc_ratio = 1.2  # viscosity ratio
     v_1 = v_2 / visc_ratio
     tau_1 = 3 * v_1 + 0.5
 
-    rho_2 = 1.0  # Displaced fluid
-    rho_1 = 1.0  # Invading fluid
+    rho_2 = 1  # Displaced fluid
+    rho_1 = 1  # Invading fluid
 
     rho_t = rho_1 + rho_2
 
@@ -294,11 +304,11 @@ if __name__ == "__main__":
     b = 2 / 21
     R = 1.0
     Tc = 0.5714285714
-    T = 0.96 * Tc
-    eos = VanderWaal(a=[a, a], b=[b, b], R=[R, R], T=T)
+    T = 0.8 * Tc
+    eos = VanderWaal(a=[a, a], b=[b, b], R=[R, R], T=T, debugging=debugging == 1)
 
     g_kkprime = -0.027 * np.ones((2, 2))
-    g = 0.57
+    g = 0.50
     g_kkprime[0, 1] = g
     g_kkprime[1, 0] = g
     e = LatticeD2Q9().c.T
@@ -327,40 +337,9 @@ if __name__ == "__main__":
     nx = 200
     ny = 200
 
-    os.system("rm -rf output*/ *.vtk surface_tension.txt")
-    file = open("surface_tension.txt", "w")
-    file.write("Radius,Pressure Difference\n")
-    for r in [25, 30, 35, 40, 45]:
-        kwargs = {
-            "n_components": 2,
-            "lattice": LatticeD2Q9(precision),
-            "nx": nx,
-            "ny": ny,
-            "nz": 0,
-            "g_kkprime": g_kkprime,
-            "EOS": eos,
-            "body_force": [0.0, 0.0],
-            "precision": precision,
-            "M": [M, M],
-            "s_rho": s_rho,
-            "s_e": s_e,
-            "s_eta": s_eta,
-            "s_j": s_j,
-            "s_q": s_q,
-            "s_v": s_v,
-            "kappa": [0.0, 0.0],
-            "k": [0.16, 0.16],
-            "A": np.zeros((2, 2)),
-            "io_rate": 10,
-            "compute_MLUPS": False,
-            "print_info_rate": 20,
-            "checkpoint_rate": -1,
-            "checkpoint_dir": os.path.abspath("./checkpoints_"),
-            "restore_checkpoint": False,
-        }
-        sim = Droplet2D(**kwargs)
-        sim.run(500)
-    file.close()
+    # Keep the droplet surface-tension sweep disabled while debugging capillary stability.
+    # It uses different parameters and otherwise its debug output is mixed with the
+    # capillary run below.
 
     nx = 500
     ny = 76
@@ -401,18 +380,19 @@ if __name__ == "__main__":
             "s_j": s_j,
             "s_q": s_q,
             "s_v": s_v,
-            "kappa": [0.0, 0.0],
-            "k": [0.01, 0.01],
-            "A": -0.25 * np.ones((2, 2)),
-            "io_rate": 10,
+            "kappa": [0, 0],
+            "k": [0, 0],
+            "A": -0.2 * np.ones((2, 2)),
+            "io_rate": 50,
             "compute_MLUPS": False,
-            "print_info_rate": 200,
+            "print_info_rate": 50,
             "checkpoint_rate": -1,
             "checkpoint_dir": os.path.abspath("./checkpoints_"),
             "restore_checkpoint": False,
+            "debugging": debugging == 1,
         }
         try:
             sim = CapillaryFingering(**kwargs)
-            sim.run(500)
+            sim.run(6000)
         except FloatingPointError as _:  # Larger forces can lead to instability
             continue

@@ -70,9 +70,12 @@ class Multiphase(LBMBase):
     def __init__(self, **kwargs):
         self.n_components = kwargs.get("n_components")
         super().__init__(**kwargs)
+        self.debugging = bool(kwargs.get("debugging", False))
         self.k = kwargs.get("k")
         self.A = kwargs.get("A")
         self.eos = kwargs.get("EOS", None)
+        if self.eos is not None:
+            self.eos.debugging = self.debugging
         self.g_kkprime = kwargs.get("g_kkprime")  # Fluid-fluid interaction strength
         # self.g_ks = kwargs.get("g_ks")  # Fluid-solid interaction strength
         self.body_force = kwargs.get("body_force", None)
@@ -644,9 +647,33 @@ class Multiphase(LBMBase):
         rho_tree = map(lambda rho: self.precisionPolicy.cast_to_compute(rho), rho_tree)
         p_tree = self.compute_pressure(rho_tree)
         # Shan-Chen potential using modified pressure
-        psi_tree = map(
-            lambda k, p, rho, G: jnp.sqrt(2 * (k * p - self.lattice.cs2 * rho) / G), self.k, p_tree, rho_tree, self.g_kkprime.diagonal().tolist()
-        )
+        def compute_psi_debug(k, p, rho, G):
+            sqrt_arg = 2 * (k * p - self.lattice.cs2 * rho) / G
+            jax.debug.print("[potential] k/G = {}/{}", k, G)
+            jax.debug.print("[potential] p min/max = {}/{}", jnp.nanmin(p), jnp.nanmax(p))
+            jax.debug.print("[potential] rho min/max = {}/{}", jnp.nanmin(rho), jnp.nanmax(rho))
+            jax.debug.print("[potential] sqrt_arg min/max = {}/{}", jnp.nanmin(sqrt_arg), jnp.nanmax(sqrt_arg))
+            jax.debug.print("[potential] sqrt_arg negative count = {}", jnp.sum(sqrt_arg < 0))
+            jax.debug.print(
+                "[potential] nan counts p/rho/sqrt_arg = {}/{}/{}",
+                jnp.sum(jnp.isnan(p)),
+                jnp.sum(jnp.isnan(rho)),
+                jnp.sum(jnp.isnan(sqrt_arg)),
+            )
+            return jnp.sqrt(sqrt_arg)
+
+        def compute_psi(k, p, rho, G):
+            sqrt_arg = 2 * (k * p - self.lattice.cs2 * rho) / G
+            return jnp.sqrt(sqrt_arg)
+
+        if self.debugging:
+            psi_tree = map(
+                compute_psi_debug, self.k, p_tree, rho_tree, self.g_kkprime.diagonal().tolist()
+            )
+        else:
+            psi_tree = map(
+                compute_psi, self.k, p_tree, rho_tree, self.g_kkprime.diagonal().tolist()
+            )
         # Zhang-Chen potential
         U_tree = map(lambda k, p, rho: k * p - self.lattice.cs2 * rho, self.k, p_tree, rho_tree)
         return psi_tree, U_tree
@@ -903,6 +930,8 @@ class Multiphase(LBMBase):
 
         # Loop over all time steps
         for timestep in range(start_step, t_max + 1):
+            if self.debugging:
+                print(f"\n[debug] starting timestep {timestep}/{t_max}")
             io_flag = self.ioRate > 0 and (timestep % self.ioRate == 0 or timestep == t_max)
             print_iter_flag = self.printInfoRate > 0 and timestep % self.printInfoRate == 0
             checkpoint_flag = self.checkpointRate > 0 and timestep % self.checkpointRate == 0
@@ -935,6 +964,8 @@ class Multiphase(LBMBase):
 
             # Perform one time-step (collision, streaming, and boundary conditions)
             f_tree, fstar_tree = self.step(f_tree, timestep)
+            if self.debugging and hasattr(jax, "effects_barrier"):
+                jax.effects_barrier()
 
             # Print the progress of the simulation
             if print_iter_flag:
@@ -1329,7 +1360,27 @@ class MultiphaseMRT(Multiphase):
         """
         F_tree = self.compute_force(rho_tree)
 
-        delta_u_tree = map(lambda F, rho: F / rho, F_tree, rho_tree)
+        def compute_delta_u_debug(F, rho):
+            delta_u = F / rho
+            jax.debug.print("[force] F min/max = {}/{}", jnp.nanmin(F), jnp.nanmax(F))
+            jax.debug.print("[force] rho min/max = {}/{}", jnp.nanmin(rho), jnp.nanmax(rho))
+            jax.debug.print("[force] delta_u min/max = {}/{}", jnp.nanmin(delta_u), jnp.nanmax(delta_u))
+            jax.debug.print("[force] small rho count abs(rho)<1e-12 = {}", jnp.sum(jnp.abs(rho) < 1.0e-12))
+            jax.debug.print(
+                "[force] nan counts F/rho/delta_u = {}/{}/{}",
+                jnp.sum(jnp.isnan(F)),
+                jnp.sum(jnp.isnan(rho)),
+                jnp.sum(jnp.isnan(delta_u)),
+            )
+            return delta_u
+
+        def compute_delta_u(F, rho):
+            return F / rho
+
+        if self.debugging:
+            delta_u_tree = map(compute_delta_u_debug, F_tree, rho_tree)
+        else:
+            delta_u_tree = map(compute_delta_u, F_tree, rho_tree)
         u_temp_tree = map(lambda u, delta_u: u + delta_u, u_tree, delta_u_tree)
         feq_force_tree = self.equilibrium(rho_tree, u_temp_tree, cast_output=False)
         meq_force_tree = map(lambda feq, M: jnp.dot(feq, M), feq_force_tree, self.M)
@@ -1361,6 +1412,14 @@ class MultiphaseMRT(Multiphase):
         mout_tree = self.apply_force(mout_tree, meq_tree, rho_tree, u_tree)
         fout_tree = map(lambda m, Minv, C: jnp.dot(m + C, Minv), mout_tree, self.M_inv, C_tree)
         # fout_tree = self.apply_force(fout_tree, feq_tree, rho_tree, u_tree)
+
+        def debug_collision_output(fout):
+            jax.debug.print("[collision] fout min/max = {}/{}", jnp.nanmin(fout), jnp.nanmax(fout))
+            jax.debug.print("[collision] fout nan count = {}", jnp.sum(jnp.isnan(fout)))
+            return fout
+
+        if self.debugging:
+            fout_tree = map(debug_collision_output, fout_tree)
         return map(
             lambda fout: self.precisionPolicy.cast_to_output(fout),
             fout_tree,

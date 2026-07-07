@@ -13,6 +13,7 @@ class EOS:
     """
 
     def __init__(self, temperature_field_type="isothermal", **kwargs):
+        self.debugging = bool(kwargs.get("debugging", False))
         self.a = kwargs.get("a")
         self.b = kwargs.get("b")
         self.R = kwargs.get("R")
@@ -128,13 +129,32 @@ class VanderWaal(EOS):
 
     @partial(jit, static_argnums=(0,), inline=True)
     def EOS(self, rho_tree):
+        def eos(a, b, R, rho):
+            return (rho * R * self.T) / (1.0 - b * rho) - a * rho**2
+
         def eos_with_debug(a, b, R, rho):
-            p = (rho * R * self.T) / (1.0 - b * rho) - a * rho**2
-            # jax.debug.print("VdW EOS — p min/max = {}/{}", jnp.min(p), jnp.max(p))
-            # jax.debug.print("VdW EOS — rho min/max = {}/{}", jnp.min(rho), jnp.max(rho))
+            denom = 1.0 - b * rho
+            p = (rho * R * self.T) / denom - a * rho**2
+            jax.debug.print("[EOS] denom min/max = {}/{}", jnp.nanmin(denom), jnp.nanmax(denom))
+            jax.debug.print(
+                "[EOS] nan counts rho/denom/p = {}/{}/{}",
+                jnp.sum(jnp.isnan(rho)),
+                jnp.sum(jnp.isnan(denom)),
+                jnp.sum(jnp.isnan(p)),
+            )
+            jax.debug.print(
+                "[EOS] non-finite counts rho/denom/p = {}/{}/{}",
+                jnp.sum(~jnp.isfinite(rho)),
+                jnp.sum(~jnp.isfinite(denom)),
+                jnp.sum(~jnp.isfinite(p)),
+            )
+            jax.debug.print("VdW EOS — p min/max = {}/{}", jnp.min(p), jnp.max(p))
+            jax.debug.print("VdW EOS — rho min/max = {}/{}", jnp.min(rho), jnp.max(rho))
             return p
 
-        return map(eos_with_debug, self.a, self.b, self.R, rho_tree)
+        if self.debugging:
+            return map(eos_with_debug, self.a, self.b, self.R, rho_tree)
+        return map(eos, self.a, self.b, self.R, rho_tree)
 
     @partial(jit, static_argnums=(0,), inline=True)
     def EOS_thermal(self, rho_tree, T):
