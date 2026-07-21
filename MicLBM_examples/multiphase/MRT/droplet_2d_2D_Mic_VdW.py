@@ -105,23 +105,19 @@ MIC_THERM_USER_PARAMETERS = {
         "Debug": "no",
         "stability": "no",
 
-        # EOS / model settings
         "N_components": 1,
         "Substance_ID1": 0,
         "PotModel_1": "LJ.pm",
-        "EOS": "M_SAFT_VR_MIE",
-        "IDEAL": "IdealQM",
-
-        # Substance parameters
-        "epsilon_1": 182.32,
-        "sigma_1": 3.7131,
-        "chainlength": 1.0677,
-        "molar_mass_1": 44.009,
-        "CAS_number_1": "124-38-9",
-        "Quadrupolemoment_1": 4.4,
-        "N_Quadrupolemoment_1": 1,
-        "eta_param": "0,-2.5399,2.9133,-0.2182,0.1340",
-        "DGT_kappa_1": 2.5726,
+        "units": "SI",
+        "EOS": "vanderWaals",
+        "Output": "no",
+        "Debug": "no",
+        "chainlength_1": 1,
+        "b_VDW_1": 0.0952,
+        "a_VDW_1": 0.1837,
+        "molar_mass_1": 114.04,
+        "eta_param": "0,-16.887065518,15.000907502,-2.8455190264,0.44056790447", #data from Argon, didn't have any physical meaning, just to get a reasonable viscosity value for the simulation
+        "DGT_kappa_1": 6.738872, #ditto
         "transPropMode": "entropyScaling",
         "properties": "p, eta, gamma_surface",
 }
@@ -133,7 +129,7 @@ if __name__ == "__main__":
     repo_root = Path(__file__).resolve().parents[3]
     temp_dir = repo_root / "temp"
     temp_dir.mkdir(parents=True, exist_ok=True)
-    temp_file = temp_dir / "temp_mictherm_grids_CO2.npz"
+    temp_file = temp_dir / "temp_mictherm_grids_VdW.npz"
     # calculate critical point properties using MicTherm API
     mictherm_names, mictherm_units, mictherm_values = run_mictherm_func(
         mode="criticalpoint",
@@ -154,9 +150,15 @@ if __name__ == "__main__":
 
     T = 0.85* Tc
 
-    factorTc = 1
-    factorRho = 1
-    factorPc = 1
+    Tc = 4/7
+    rhoc = 7/2
+    pc = (9/49) / (27 * (2/21) ** 2)
+
+    T = 0.8 * Tc
+
+    factorTc = mictherm_values[0,0]/Tc
+    factorRho = mictherm_values[0,1]/rhoc
+    factorPc = mictherm_values[0,2]/pc
 
     # calculate VLE properties using MicTherm API for Tiso
     mictherm_names, mictherm_units, mictherm_values = run_mictherm_func(
