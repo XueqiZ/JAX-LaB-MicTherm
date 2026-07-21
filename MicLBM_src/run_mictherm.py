@@ -6,6 +6,41 @@ except ImportError:
     from MicTherm_API import compute_mictherm
 
 
+def extract_mictherm_properties(properties, values, first_property_column=1):
+    """Return MicTherm output columns keyed by their requested property names.
+
+    ``properties`` may be a comma-separated string (as used in the MicTherm
+    parameters) or an iterable of names. MicTherm's user-properties output has
+    an input column before the requested properties by default, hence
+    ``first_property_column=1``.
+    """
+    if isinstance(properties, str):
+        property_names = [name.strip() for name in properties.split(",") if name.strip()]
+    else:
+        property_names = [str(name).strip() for name in properties if str(name).strip()]
+
+    if not property_names:
+        raise ValueError("At least one MicTherm property must be specified")
+    if len(property_names) != len(set(property_names)):
+        raise ValueError(f"MicTherm property names must be unique: {property_names}")
+
+    if getattr(values, "ndim", None) != 2:
+        raise ValueError("MicTherm values must be a two-dimensional array")
+
+    last_property_column = first_property_column + len(property_names)
+    if values.shape[1] < last_property_column:
+        raise ValueError(
+            f"MicTherm returned {values.shape[1]} columns, but columns "
+            f"{first_property_column} through {last_property_column - 1} are required "
+            f"for {property_names}"
+        )
+
+    return {
+        name: values[:, first_property_column + index]
+        for index, name in enumerate(property_names)
+    }
+
+
 def run_mictherm_func(
     mode="criticalpoint",
     T=None,

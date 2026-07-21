@@ -13,7 +13,7 @@ from pathlib import Path
 from jax import config
 import numpy as np
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+PROJECT_ROOT = Path(__file__).resolve().parents[4]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
     
@@ -23,7 +23,7 @@ from src.lattice import LatticeD2Q9
 from MicLBM_src.eos import MicTherm
 from src.utils import *
 from MicLBM_src.Mic_multiphase import MultiphaseMRT
-from validate_thermodynamic_consistency_vdw import read_thermodynamic_consistency
+from MicLBM_examples.multiphase.MRT.data_kA_opt.validate_thermodynamic_consistency_vdw import read_thermodynamic_consistency
 
 # config.update("jax_default_matmul_precision", "float32")
 

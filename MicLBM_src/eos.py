@@ -307,10 +307,26 @@ class MicTherm(EOS):
     # initialization step bevore the simulation starts, where the EOS object is created and the grids are processed and stored for later use during the simulation. The `__init__` method handles
     #  all the necessary checks and preparations to ensure that the EOS can be evaluated efficiently during the simulation run.
     def __init__(self, **kwargs):
-        self.temperature_field_type = kwargs.get("temperature_field_type", "isothermal")
+        temperature_field_type = kwargs.get("temperature_field_type")
+        if temperature_field_type is None:
+            temperature_field_type = "thermal" if kwargs.get("T") is None and kwargs.get("T_grid") is not None else "isothermal"
+        self.temperature_field_type = temperature_field_type
         self.T = kwargs.get("T")
         self.p_grid = jnp.asarray(kwargs.get("p_grid"))
         self.dpdT_grid = kwargs.get("dpdT_grid")
+        self.eta_grid = kwargs.get("eta_grid")
+        self.gamma_surface_grid = kwargs.get("gamma_surface_grid")
+
+        property_tables = {
+            "eta_grid": self.eta_grid,
+            "gamma_surface_grid": self.gamma_surface_grid,
+        }
+        for name, table in property_tables.items():
+            if table is not None:
+                table = jnp.asarray(table)
+                if table.shape != self.p_grid.shape:
+                    raise ValueError(f"{name} must have the same shape as p_grid")
+                property_tables[name] = table
 
         if self.p_grid.ndim not in (1, 2):
             raise ValueError("p_grid must be 1D or 2D")
@@ -336,6 +352,10 @@ class MicTherm(EOS):
                 self.p_grid = self.p_grid.T
                 if self.dpdT_grid is not None:
                     self.dpdT_grid = jnp.asarray(self.dpdT_grid).T
+                property_tables = {
+                    name: None if table is None else table.T
+                    for name, table in property_tables.items()
+                }
             elif rho_axis_dim in (None, 1) and t_axis_dim in (None, 0):
                 pass
             else:
@@ -348,6 +368,10 @@ class MicTherm(EOS):
             if self.p_grid.shape[0] != self.rho_grid.shape[0]:
                 raise ValueError("1D p_grid must have the same length as rho_grid")
             self.p_grid = self.p_grid[sort_idx]
+            property_tables = {
+                name: None if table is None else table[sort_idx]
+                for name, table in property_tables.items()
+            }
             self.T_grid = None
             self._T_grid_uniform = False
             self._T_grid_spacing = None
@@ -368,7 +392,14 @@ class MicTherm(EOS):
             t_sort_idx = jnp.argsort(self.T_grid)
             self.T_grid = self.T_grid[t_sort_idx]
             self.p_grid = self.p_grid[t_sort_idx, :][:, sort_idx]
+            property_tables = {
+                name: None if table is None else table[t_sort_idx, :][:, sort_idx]
+                for name, table in property_tables.items()
+            }
             self._T_grid_uniform, self._T_grid_spacing = self._uniform_spacing(self.T_grid)
+
+        self.eta_grid = property_tables["eta_grid"]
+        self.gamma_surface_grid = property_tables["gamma_surface_grid"]
 
         self._rho_grid_uniform, self._rho_grid_spacing = self._uniform_spacing(self.rho_grid)
 
@@ -476,6 +507,24 @@ class MicTherm(EOS):
             return self._interp_rho(table, rho)
         return self._interp_rho_T(table, rho, T)
 
+    def interpolate_properties(self, rho, T):
+        """Return interpolated p, eta, and gamma_surface at (rho, T).
+
+        ``rho`` and ``T`` may be scalars or broadcast-compatible arrays.
+        """
+        if self.T_grid is None:
+            raise ValueError("interpolate_properties(rho, T) requires a 2D p_grid and T_grid")
+        if self.eta_grid is None:
+            raise ValueError("eta_grid must be provided to interpolate viscosity")
+        if self.gamma_surface_grid is None:
+            raise ValueError("gamma_surface_grid must be provided to interpolate surface tension")
+
+        return {
+            "p": self._interp_rho_T(self.p_grid, rho, T),
+            "eta": self._interp_rho_T(self.eta_grid, rho, T),
+            "gamma_surface": self._interp_rho_T(self.gamma_surface_grid, rho, T),
+        }
+
     @partial(jit, static_argnums=(0,), inline=True)
     def EOS(self, rho_tree):
         return map(lambda rho: self._lookup(self.p_grid, rho, self.T), rho_tree)
@@ -487,6 +536,41 @@ class MicTherm(EOS):
     @partial(jit, static_argnums=(0,), inline=True)
     def drho_dT(self, rho_tree, T):
         return map(lambda rho: self._lookup(self.dpdT_grid, rho, T), rho_tree)
+
+
+def interpolate_mictherm_properties(kwargs, rho, T):
+    """Interpolate MicTherm properties from grid data stored in ``kwargs``.
+
+    Parameters
+    ----------
+    kwargs : dict
+        Must contain ``rho_grid``, ``T_grid``, ``p_grid``, ``eta_grid``, and
+        ``gamma_surface_grid``.
+    rho : scalar or array-like
+        Density value or field at which to evaluate the property tables.
+    T : scalar or array-like
+        Temperature value or field. It must be broadcast-compatible with
+        ``rho``.
+
+    Returns
+    -------
+    dict
+        Interpolated values with keys ``p``, ``eta``, and
+        ``gamma_surface``.
+    """
+    required = (
+        "rho_grid",
+        "T_grid",
+        "p_grid",
+        "eta_grid",
+        "gamma_surface_grid",
+    )
+    missing = [name for name in required if kwargs.get(name) is None]
+    if missing:
+        raise ValueError(f"Missing MicTherm property grids: {', '.join(missing)}")
+
+    eos = MicTherm(**kwargs)
+    return eos.interpolate_properties(rho, T)
 
 
 class Redlich_Kwong(EOS):
