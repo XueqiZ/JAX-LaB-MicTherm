@@ -297,14 +297,14 @@ if __name__ == "__main__":
     # Note for Martin: I don't know on which position you want to use eta_grid and gamma_surface_grid, so I just saved them in kwargs for now. You can access them later in the code as needed.
     # for rho,p,T, the grid intepolation has been carried out in MicTherm class, so you can access them directly from the eos object.
     kwargs = {
-        "rho_grid": rho_grid, # unit: 'mol/L'
-        "p_grid": p_grid, # the p_grid has been saved here in kwargs for later use in the further code, Unit: 'MPa'
+        "rho_grid": rho_grid, # unit: reduced density
+        "p_grid": p_grid, # the p_grid has been saved here in kwargs for later use in the further code, Unit: reduced pressure
         "T_grid": T_grid, # unit: 'K'
-        "eta_grid": eta_grid,  # the eta_grid has been saved here in kwargs for later use in the further code, Unit: 'Pa.s'
-        "gamma_surface_grid": gamma_surface_grid, # the gamma_surface has been saved here in kwargs for later use in the further code, Unit: 'J/m^2'
+        "eta_grid": eta_grid,  # the eta_grid has been saved here in kwargs for later use in the further code, Unit: reduced viscosity
+        "gamma_surface_grid": gamma_surface_grid, # the gamma_surface has been saved here in kwargs for later use in the further code, Unit: reduced surface tension
     }
     eos = MicTherm(**kwargs)
-    # example of how to interpolate properties at a specific state point (rho=12.5, T=280.0)
+    # example of how to interpolate properties at a specific state point (rho=0.8, T=0.9)
     properties = interpolate_mictherm_properties(
         kwargs=kwargs,
         rho=0.8,
