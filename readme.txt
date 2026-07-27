@@ -1,1 +1,0 @@
-bei kA optimieren, macht mehr Sinn mehr auf Gasphase zu achten? da ist die Abweichung immer wesentlich größer

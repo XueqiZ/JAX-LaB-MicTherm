@@ -13,15 +13,19 @@ from jax import config
 import numpy as np
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+PROJECT_ROOT = Path(__file__).resolve().parents[4]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from run_mictherm import run_mictherm_func, mictherm_grid
+from MicLBM_src.run_mictherm import (
+    extract_mictherm_properties,
+    mictherm_grid,
+    run_mictherm_func,
+)
+from MicLBM_src.Mic_multiphase import MultiphaseMRTTvar
+from MicLBM_src.eos import MicTherm
 from src.lattice import LatticeD2Q9
-from src.eos import MicTherm
 from src.utils import *
-from src.multiphase import MultiphaseMRTTvar
 from mpl_toolkits.mplot3d import Axes3D
 
 # config.update("jax_default_matmul_precision", "float32")
@@ -99,7 +103,7 @@ if __name__ == "__main__":
     # set debugging: 1 -> load/save temp grids to speed up debugging, 0 -> full recompute
     debugging = 0
     # create a top-level 'temp' folder in the repository root and use it for temporary files
-    repo_root = Path(__file__).resolve().parents[3]
+    repo_root = Path(__file__).resolve().parents[4]
     temp_dir = repo_root / "temp"
     temp_dir.mkdir(parents=True, exist_ok=True)
     temp_file = temp_dir / "temp_mictherm_grids.npz"

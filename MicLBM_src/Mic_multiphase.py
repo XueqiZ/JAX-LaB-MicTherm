@@ -882,7 +882,7 @@ class Multiphase(LBMBase):
         else:
             return f_poststreaming_tree, None
 
-    def run(self, t_max):
+    def run(self, t_max, initial_f_tree=None, start_step=0):
         """
         This function runs the LBM simulation for a specified number of time steps.
 
@@ -898,10 +898,20 @@ class Multiphase(LBMBase):
 
         Returns
         -------
+        initial_f_tree (pytree of jax.numpy.ndarray, optional): Existing
+            distribution fields from a preceding compatible simulation. If
+            provided, initialization is skipped and the run continues from
+            ``start_step``.
+
+        start_step (int, optional): First timestep for an in-memory continued
+            run. Ignored when restoring an on-disk checkpoint.
+
         f_tree (pytree of jax.numpy.ndarray): Distribution function after t_max timesteps.
         """
-        f_tree = self.assign_fields_sharded()
-        start_step = 0
+        if initial_f_tree is None:
+            f_tree = self.assign_fields_sharded()
+        else:
+            f_tree = initial_f_tree
         if self.restore_checkpoint:
             latest_step = self.mngr.latest_step()
             if latest_step is not None:  # existing checkpoint present

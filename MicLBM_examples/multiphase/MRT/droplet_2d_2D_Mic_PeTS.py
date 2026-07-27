@@ -12,6 +12,7 @@ from pathlib import Path
 from jax import config
 import numpy as np
 from pathlib import Path
+from scipy.interpolate import interp1d
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(PROJECT_ROOT) not in sys.path:
@@ -121,44 +122,100 @@ MIC_THERM_USER_PARAMETERS = {
         "DGT_kappa_1": 2.7334,
         "transPropMode": "entropyScaling",
         "properties": "p, eta, gamma_surface",
+        "dT": 0.01,
 }
 
 if __name__ == "__main__":
-    # set debugging: 1 -> load/save temp grids to speed up debugging, 0 -> full recompute
-    debugging = 0
+    # interactive selection: use existing precomputed grids (debugging=1)
+    # or generate new grids (debugging=0). User can adjust Tr in both cases.
+    def _inp(prompt, default):
+        v = input(f"{prompt} [{default}]: ")
+        return v.strip() or str(default)
+
+    print("Select grid mode:\n 1) Use existing precomputed grid (faster)\n 2) Generate new grid (full recompute)")
+    mode = _inp("Choose 1 or 2", "1")
+    debugging = 1 if mode == "1" else 0
+
+    Tr = float(_inp("Reduced temperature Tr", 0.85))
+
+    # When using precomputed grids, user should check Tmin/Tstep/rhostep are as desired.
+    # When generating new grids (debugging==0), allow changing these parameters here.
+    Trmin = 0.3
+    Tstep = 0.01
+    rhostep = 0.03
+    print(f"Current grid defaults: Trmin={Trmin}, Tstep={Tstep}, rhostep={rhostep}.")
+    print("If these are not suitable, regenerate the grid (mode 2); MicTherm runtime is required.")
+    if debugging == 0:
+        Trmin = float(_inp("Trmin (min reduced temperature)", Trmin))
+        Tstep = float(_inp("Tstep (temperature step)", Tstep))
+        rhostep = float(_inp("rhostep (density step)", rhostep))
+    else:
+        print(f"Using precomputed grids. Current Trmin={Trmin}, Tstep={Tstep}, rhostep={rhostep}.")
+        print("To change these values, choose mode 2 (Generate new grid), because regeneration requires MicTherm runtime.")
+
     # create a top-level 'temp' folder in the repository root and use it for temporary files
     repo_root = Path(__file__).resolve().parents[3]
     temp_dir = repo_root / "temp"
     temp_dir.mkdir(parents=True, exist_ok=True)
     temp_file = temp_dir / "temp_mictherm_grids_PeTS.npz"
-    # calculate critical point properties using MicTherm API
-    mictherm_names, mictherm_units, mictherm_values = run_mictherm_func(
-        mode="criticalpoint",
-        T=None,
-        rho=None,
-        p=None,
-        x=None,
-        t_iso=None,
-        init_mode="uninitialized",
-        print_output=False,
-        base_user_parameters=MIC_THERM_USER_PARAMETERS,
-    )
 
-    # reference: publication 
-    Tc = mictherm_values[0,0]
-    rhoc = mictherm_values[0,1]
-    pc = mictherm_values[0,2]
+    if debugging == 1:
+        if not temp_file.exists():
+            raise FileNotFoundError(
+                f"{temp_file} does not exist. Run once with debugging = 0 "
+                "to calculate and cache the MicTherm data."
+            )
 
-    T = 0.85* Tc
+        # Load all precomputed critical-point, VLE, and grid data.
+        with np.load(temp_file) as data:
+            Tc = data["Tc"].item()
+            rhoc = data["rhoc"].item()
+            pc = data["pc"].item()
+            micthermVLE_T = data["VLE_T"]
+            micthermVLE_rho_l = data["VLE_rho_l"]
+            micthermVLE_rho_g = data["VLE_rho_g"]
+            T_grid = data["T_grid"]
+            rho_grid = data["rho_grid"]
+            p_grid = data["p_grid"]
+            eta_grid = data["eta_grid"]
+            gamma_surface_grid = data["gamma_surface_grid"]
 
-    factorTc = 1
-    factorRho = 1
-    factorPc = 1
+        T = Tr * Tc
+        interp_rho_l = interp1d(
+            micthermVLE_T,
+            micthermVLE_rho_l,
+            kind="cubic",
+            fill_value="extrapolate",
+        )
+        interp_rho_g = interp1d(
+            micthermVLE_T,
+            micthermVLE_rho_g,
+            kind="cubic",
+            fill_value="extrapolate",
+        )
+        rho_l = interp_rho_l(T)
+        rho_g = interp_rho_g(T)
+    else:
+        # Calculate critical-point properties using the MicTherm API.
+        mictherm_names, mictherm_units, mictherm_values = run_mictherm_func(
+            mode="criticalpoint",
+            T=None,
+            rho=None,
+            p=None,
+            x=None,
+            t_iso=None,
+            init_mode="uninitialized",
+            print_output=False,
+            base_user_parameters=MIC_THERM_USER_PARAMETERS,
+        )
+        Tc = mictherm_values[0, 0]
+        rhoc = mictherm_values[0, 1]
+        pc = mictherm_values[0, 2]
+        T = Tr * Tc
 
-    # calculate VLE properties using MicTherm API for Tiso
-    mictherm_names, mictherm_units, mictherm_values = run_mictherm_func(
-            mode="vle_iso",
-            t_iso=T * factorTc,  # scale Tiso by factorTc to be consistent with critical point properties
+        # Calculate VLE properties using the MicTherm API for Tiso.
+        mictherm_names, mictherm_units, mictherm_values = run_mictherm_func(
+            mode="vle_full",
             T=None,
             rho=None,
             p=None,
@@ -166,28 +223,23 @@ if __name__ == "__main__":
             init_mode="uninitialized",
             print_output=False,
             base_user_parameters=MIC_THERM_USER_PARAMETERS,
-    )
-    mictherm_rho_l = mictherm_values[0, 1] 
-    mictherm_rho_g = mictherm_values[0, 2]
-    mictherm_T = T * factorTc  # scale T by factorTc to be consistent with critical point properties
-    rho_l = mictherm_rho_l / factorRho  # scale back by factorRho
-    rho_g = mictherm_rho_g / factorRho  # scale back by factorRho
+        )
+        micthermVLE_rho_l = mictherm_values[:, 1]
+        micthermVLE_rho_g = mictherm_values[:, 2]
+        micthermVLE_T = mictherm_values[:, 0]
 
-    # Create meshgrid to combine rho and T dimensions
-    rho_step = 10
-    T_step = 10
-    mictherm_T_grid = np.linspace(mictherm_T * 0.95,mictherm_T * 1.1, T_step)
-    mictherm_rho_grid = np.linspace(mictherm_rho_g * 0.85,  mictherm_rho_l * 1.3, rho_step)
+        # Create interpolation functions with VLE_T as x and rho_l, rho_g as y
+        interp_rho_l = interp1d(micthermVLE_T, micthermVLE_rho_l, kind="cubic", fill_value="extrapolate")
+        interp_rho_g = interp1d(micthermVLE_T, micthermVLE_rho_g, kind="cubic", fill_value="extrapolate")
 
-    if debugging and temp_file.exists():
-        # load precomputed grids
-        data = np.load(temp_file)
-        T_grid = data["T_grid"]
-        rho_grid = data["rho_grid"]
-        p_grid = data["p_grid"]
-        eta_grid = data["eta_grid"]
-        gamma_surface_grid = data["gamma_surface_grid"]
-    else:
+        # Evaluate at target temperature T
+        rho_l = interp_rho_l(T)
+        rho_g = interp_rho_g(T)
+        rho_l_max = interp_rho_l(Trmin * Tc)
+
+        # Create meshgrid to combine rho and T dimensions.
+        mictherm_T_grid = np.arange(0.3, 1.0, Tstep) * Tc
+        mictherm_rho_grid = np.arange(0.01, rho_l_max / rhoc, rhostep) * rhoc
         rho_grid_mesh, T_grid_mesh = np.meshgrid(mictherm_rho_grid, mictherm_T_grid)
         T_array = T_grid_mesh.flatten()
         rho_array = rho_grid_mesh.flatten()
@@ -206,15 +258,26 @@ if __name__ == "__main__":
             MIC_THERM_USER_PARAMETERS["properties"],
             mictherm_values,
         )
-        T_grid = InputT.reshape(mictherm_T_grid.shape[0], mictherm_rho_grid.shape[0]) / factorTc  # scale back by factorTc
-        rho_grid = Inputrho.reshape(mictherm_T_grid.shape[0], mictherm_rho_grid.shape[0]) / factorRho  # scale back by factorRho
-        p_grid = mictherm_properties["p"].reshape(mictherm_T_grid.shape[0], mictherm_rho_grid.shape[0]) / factorPc  # scale back by factorPc
+        T_grid = InputT.reshape(mictherm_T_grid.shape[0], mictherm_rho_grid.shape[0])
+        rho_grid = Inputrho.reshape(mictherm_T_grid.shape[0], mictherm_rho_grid.shape[0])
+        p_grid = mictherm_properties["p"].reshape(mictherm_T_grid.shape[0], mictherm_rho_grid.shape[0])
         eta_grid = mictherm_properties["eta"].reshape(mictherm_T_grid.shape[0], mictherm_rho_grid.shape[0])
         gamma_surface_grid = mictherm_properties["gamma_surface"].reshape(mictherm_T_grid.shape[0], mictherm_rho_grid.shape[0])
 
-        # Save grids when debugging modus equals 0
-        if debugging == 0:
-            np.savez(temp_file, T_grid=T_grid, rho_grid=rho_grid, p_grid=p_grid, eta_grid=eta_grid, gamma_surface_grid=gamma_surface_grid)
+        np.savez(
+            temp_file,
+            Tc=Tc,
+            rhoc=rhoc,
+            pc=pc,
+            VLE_T=micthermVLE_T,
+            VLE_rho_l=micthermVLE_rho_l,
+            VLE_rho_g=micthermVLE_rho_g,
+            T_grid=T_grid,
+            rho_grid=rho_grid,
+            p_grid=p_grid,
+            eta_grid=eta_grid,
+            gamma_surface_grid=gamma_surface_grid,
+        )
 
     
     fig = plt.figure(figsize=(16, 5))
