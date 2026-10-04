@@ -1,1 +1,11 @@
 *.pyc
+
+# Local agent setup (kept local, not committed)
+AGENTS.md
+CLAUDE.md
+memories.md
+.claude/
+
+# Simulation results (any folder named output, e.g. repo root or the cwd of an example run)
+output/
+MicLBM_examples/multiphase/MRT/Publication_test_case/Phase Separation Process _Binary.py

@@ -1,4 +1,4 @@
-# Copyright 2015-2023 MathWorks, Inc.
+# Copyright 2015-2024 MathWorks, Inc.
 
 
 """ Package for executing deployed MATLAB functions """
@@ -13,24 +13,31 @@ import platform
 import re
 import sys
 import weakref
+import warnings
 
 class _PathInitializer(object):
     PLATFORM_DICT = {'Windows': ['PATH','dll',''], 'Linux': ['LD_LIBRARY_PATH','so','libmw'], 'Darwin': ['DYLD_LIBRARY_PATH','dylib','libmw']}
-    SUPPORTED_PYTHON_VERSIONS = ['3_9', '3_10', '3_11']
-    RUNTIME_VERSION_W_DOTS = '24.1'
-    RUNTIME_VERSION_W_UNDERSCORES = '24_1'
+    SUPPORTED_PYTHON_VERSIONS = ['3_9', '3_10', '3_11', '3_12']
+    RUNTIME_VERSION_W_DOTS = '25.1'
+    RUNTIME_VERSION_W_UNDERSCORES = '25_1'
     PACKAGE_NAME = 'MicTherm'
     
-    def set_interpreter_version(self):    
+    def set_interpreter_version(self):
         """Make sure the interpreter version is supported."""
-        ver = sys.version_info
-        version = '{0}_{1}'.format(ver[0], ver[1])
+        _ver = sys.version_info
+        _version = '{0}_{1}'.format(_ver[0], _ver[1])
+        version_with_dot = _version.replace("_", ".")
+        newer_than_supported = _ver[1] > 12
 
-        if version in _PathInitializer.SUPPORTED_PYTHON_VERSIONS:
-            self.interpreter_version = version
+        if _version in self.SUPPORTED_PYTHON_VERSIONS:
+            self.interpreter_version = _version
+        elif newer_than_supported:
+            warnings.warn('Python versions 3.9, 3.10, 3.11, and 3.12 are supported, but your version of Python is %s' % version_with_dot)
+            self.interpreter_version = _version
         else:
-            version_with_dot = version.replace("_", ".")
             raise EnvironmentError("Python {0} is not supported.".format(version_with_dot))
+
+            
 
     def __init__(self):
         """Initialize the variables."""

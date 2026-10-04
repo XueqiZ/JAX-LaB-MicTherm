@@ -2,9 +2,9 @@
 import os
 
 os.environ["PATH"] = (
-    r"C:\Program Files\MATLAB\MATLAB Runtime\R2024a\runtime\win64;"
-    r"C:\Program Files\MATLAB\MATLAB Runtime\R2024a\bin\win64;"
-    r"C:\Program Files\MATLAB\MATLAB Runtime\R2024a\sys\os\win64;"
+    r"C:\Program Files\MATLAB\MATLAB Runtime\R2025a\runtime\win64;"
+    r"C:\Program Files\MATLAB\MATLAB Runtime\R2025a\bin\win64;"
+    r"C:\Program Files\MATLAB\MATLAB Runtime\R2025a\sys\os\win64;"
     + os.environ["PATH"]
 )
 
